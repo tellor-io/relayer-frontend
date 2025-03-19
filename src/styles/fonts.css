@@ -1,0 +1,20 @@
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('./fonts/PPNeueMontreal-Book.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('./fonts/PPNeueMontreal-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Neue Montreal';
+  src: url('./fonts/PPNeueMontreal-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+} 
