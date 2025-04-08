@@ -46,7 +46,7 @@ const DataFeed = () => {
   const [inputAddress, setInputAddress] = useState(DEFAULT_CONTRACT_ADDRESS);
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
-  const [timeScale, setTimeScale] = useState('seconds'); // 'seconds', 'hourly', or 'daily'
+  const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', or 'weekly'
 
   useEffect(() => {
     const fetchData = async () => {
@@ -182,7 +182,7 @@ const DataFeed = () => {
       gap: '8px',
       justifyContent: 'center' 
     }}>
-      {['seconds', 'hourly', 'daily'].map((scale) => (
+      {['recent', 'daily', 'weekly'].map((scale) => (
         <button
           key={scale}
           onClick={() => setTimeScale(scale)}
@@ -211,69 +211,34 @@ const DataFeed = () => {
     let processedData;
     
     switch(timeScale) {
-      case 'hourly': {
-        // Group by hour and calculate averages
-        const hourlyGroups = sortedData.reduce((acc, item) => {
-          const date = new Date(item.timestamp);
-          const hourKey = date.getTime(); // Use timestamp as key
-          
-          if (!acc[hourKey]) {
-            acc[hourKey] = { 
-              delays: [], 
-              deltas: [],
-              hour: date
-            };
-          }
-          
-          // Parse delay value (remove 's' suffix and convert to number)
-          let delay = parseFloat(item.timeDifference);
-          if (item.timeDifference.includes('m')) {
-            const [min, sec] = item.timeDifference.split('m');
-            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
-          }
-
-          // Parse delta value
-          let delta = 0;
-          if (item.delayChange !== '-' && item.delayChange !== '±0s') {
-            if (item.delayChange.includes('m')) {
-              const match = item.delayChange.match(/([+-])?(\d+)m\s*(\d+\.?\d*)s/);
-              if (match) {
-                const [_, sign, mins, secs] = match;
-                const totalSeconds = parseInt(mins) * 60 + parseFloat(secs);
-                delta = sign === '-' ? -totalSeconds : totalSeconds;
-              }
-            } else {
-              delta = parseFloat(item.delayChange.replace('s', ''));
-            }
-          }
-          
-          acc[hourKey].delays.push(delay);
-          acc[hourKey].deltas.push(delta);
-          
-          return acc;
-        }, {});
-
-        // Get last 12 hours
-        const hourKeys = Object.keys(hourlyGroups)
-          .sort((a, b) => parseInt(a) - parseInt(b))
-          .slice(-12);
-
+      case 'recent': {
+        // Get the last 12 data points
+        const last12Entries = sortedData.slice(-12);
+        
         processedData = {
-          labels: hourKeys.map(key => 
-            hourlyGroups[key].hour.toLocaleString('en-US', { 
+          labels: last12Entries.map(item => 
+            new Date(item.timestamp).toLocaleTimeString('en-US', {
               hour: 'numeric',
-              hour12: true 
+              minute: 'numeric',
+              hour12: true
             })
           ),
-          delays: hourKeys.map(key => {
-            const delays = hourlyGroups[key].delays;
-            return delays.reduce((sum, val) => sum + val, 0) / delays.length;
+          delays: last12Entries.map(item => {
+            let delay = parseFloat(item.timeDifference);
+            if (item.timeDifference.includes('m')) {
+              const [min, sec] = item.timeDifference.split('m');
+              delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+            }
+            return delay;
           }),
-          deltas: hourKeys.map(key => {
-            const deltas = hourlyGroups[key].deltas.filter(d => !isNaN(d));
-            return deltas.length > 0 
-              ? deltas.reduce((sum, val) => sum + val, 0) / deltas.length 
-              : null;
+          deltas: last12Entries.map(item => {
+            if (item.delayChange === '-' || item.delayChange === '±0s') return 0;
+            let delta = parseFloat(item.delayChange);
+            if (item.delayChange.includes('m')) {
+              const [min, sec] = item.delayChange.split('m');
+              delta = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+            }
+            return delta;
           })
         };
         break;
@@ -300,7 +265,7 @@ const DataFeed = () => {
             delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
           }
 
-          // Parse delta value with improved handling of signs
+          // Parse delta value
           let delta = null;
           if (item.delayChange !== '-' && item.delayChange !== '±0s') {
             if (item.delayChange.includes('m')) {
@@ -311,7 +276,6 @@ const DataFeed = () => {
                 delta = sign === '-' ? -totalSeconds : totalSeconds;
               }
             } else {
-              // Handle simple seconds format (e.g., "+1.5s" or "-2.3s")
               const match = item.delayChange.match(/([+-])?(\d+\.?\d*)s/);
               if (match) {
                 const [_, sign, seconds] = match;
@@ -334,7 +298,6 @@ const DataFeed = () => {
           .sort()
           .slice(-7);
 
-        // Calculate absolute average of deltas (don't let positives and negatives cancel out)
         processedData = {
           labels: dayKeys.map(key => 
             dailyGroups[key].date.toLocaleString('en-US', { 
@@ -350,32 +313,86 @@ const DataFeed = () => {
           }),
           deltas: dayKeys.map(key => {
             const deltas = dailyGroups[key].deltas;
-            // Calculate average magnitude of change
-            const avgDelta = deltas.length > 0 
-              ? deltas.reduce((sum, val) => sum + Math.abs(val), 0) / deltas.length
+            return deltas.length > 0 
+              ? deltas.reduce((sum, val) => sum + val, 0) / deltas.length 
               : null;
-            console.log(`Average delta for ${key}:`, avgDelta);
-            return avgDelta;
           })
         };
-
-        console.log('Processed daily data:', processedData);
         break;
       }
       
-      default: { // seconds (raw data)
-        const last12Entries = sortedData.slice(-12);
+      case 'weekly': {
+        // Group by week and calculate averages
+        const weeklyGroups = sortedData.reduce((acc, item) => {
+          const date = new Date(item.timestamp);
+          const weekKey = `${date.getFullYear()}-W${String(Math.ceil((date.getDate() + date.getDay()) / 7)).padStart(2, '0')}`;
+          
+          if (!acc[weekKey]) {
+            acc[weekKey] = { 
+              delays: [], 
+              deltas: [],
+              date: date
+            };
+          }
+          
+          // Parse delay value
+          let delay = parseFloat(item.timeDifference);
+          if (item.timeDifference.includes('m')) {
+            const [min, sec] = item.timeDifference.split('m');
+            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+          }
+
+          // Parse delta value
+          let delta = null;
+          if (item.delayChange !== '-' && item.delayChange !== '±0s') {
+            if (item.delayChange.includes('m')) {
+              const match = item.delayChange.match(/([+-])?(\d+)m\s*(\d+\.?\d*)s/);
+              if (match) {
+                const [_, sign, mins, secs] = match;
+                const totalSeconds = (parseInt(mins) * 60) + parseFloat(secs);
+                delta = sign === '-' ? -totalSeconds : totalSeconds;
+              }
+            } else {
+              const match = item.delayChange.match(/([+-])?(\d+\.?\d*)s/);
+              if (match) {
+                const [_, sign, seconds] = match;
+                delta = parseFloat(seconds);
+                if (sign === '-') delta = -delta;
+              }
+            }
+          } else if (item.delayChange === '±0s') {
+            delta = 0;
+          }
+          
+          if (!isNaN(delay)) acc[weekKey].delays.push(delay);
+          if (delta !== null) acc[weekKey].deltas.push(delta);
+          
+          return acc;
+        }, {});
+
+        // Get last 4 weeks
+        const weekKeys = Object.keys(weeklyGroups)
+          .sort()
+          .slice(-4);
+
         processedData = {
-          labels: last12Entries.map(item => 
-            new Date(item.timestamp).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true
-            })
+          labels: weekKeys.map(key => 
+            `Week ${key.split('-W')[1]}`
           ),
-          delays: last12Entries.map(item => parseFloat(item.timeDifference)),
-          deltas: last12Entries.map(item => parseFloat(item.delayChange) || 0)
+          delays: weekKeys.map(key => {
+            const delays = weeklyGroups[key].delays;
+            return delays.length > 0 
+              ? delays.reduce((sum, val) => sum + val, 0) / delays.length 
+              : null;
+          }),
+          deltas: weekKeys.map(key => {
+            const deltas = weeklyGroups[key].deltas;
+            return deltas.length > 0 
+              ? deltas.reduce((sum, val) => sum + val, 0) / deltas.length 
+              : null;
+          })
         };
+        break;
       }
     }
 
@@ -383,14 +400,14 @@ const DataFeed = () => {
       labels: processedData.labels,
       datasets: [
         {
-          label: `${timeScale === 'seconds' ? 'Current' : 'Average'} Delay (seconds)`,
+          label: `${timeScale === 'recent' ? 'Current' : 'Average'} Delay (seconds)`,
           data: processedData.delays,
           borderColor: '#0E5353',
           backgroundColor: 'rgba(14, 83, 83, 0.5)',
           tension: 0.4,
         },
         {
-          label: `${timeScale === 'seconds' ? 'Current' : 'Average'} Delta (seconds)`,
+          label: `${timeScale === 'recent' ? 'Current' : 'Average'} Delta (seconds)`,
           data: processedData.deltas,
           borderColor: '#08D482',
           backgroundColor: 'rgba(8, 212, 130, 0.5)',
@@ -467,7 +484,7 @@ const DataFeed = () => {
   return (
     <Container>
       <Grid container alignItems="center" sx={{ mt: 4, mb: 3 }}>
-        <Grid item xs={6}>
+        <Grid item xs={12} sm={6} sx={{ mb: { xs: 2, sm: 0 } }}>
           <img 
             src="/tellor-relayer-logo.png" 
             alt="Tellor Relayer"
@@ -478,10 +495,10 @@ const DataFeed = () => {
             }}
           />
         </Grid>
-        <Grid item xs={6}>
+        <Grid item xs={12} sm={6}>
           <form onSubmit={handleAddressSubmit}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={9}>
+              <Grid item xs={12} sm={9}>
                 <TextField
                   fullWidth
                   label="Contract Address"
@@ -515,7 +532,7 @@ const DataFeed = () => {
                   }}
                 />
               </Grid>
-              <Grid item xs={3}>
+              <Grid item xs={12} sm={3}>
                 <button
                   type="submit"
                   style={{
@@ -540,7 +557,7 @@ const DataFeed = () => {
       {/* New layout structure for main content */}
       <Grid container spacing={2}>
         {/* Data feed column */}
-        <Grid item xs={7}>
+        <Grid item xs={12} lg={7}>
           <Grid container spacing={2}>
             {Array.isArray(currentValue) && 
               currentValue
@@ -564,32 +581,32 @@ const DataFeed = () => {
                     >
                       <CardContent sx={{ py: '8px !important' }}>
                         <Grid container alignItems="center" spacing={2}>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
                               <span style={{ fontWeight: 'bold' }}>ETH/USD:</span> ${data.value}
                             </Typography>
                           </Grid>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
                               <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
                             </Typography>
                           </Grid>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Reported on Layer:</span> {data.timestamp}
+                              <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
                             </Typography>
                           </Grid>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Relayed to Bridge:</span> {data.relayTimestamp}
+                              <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
                             </Typography>
                           </Grid>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
                               <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
                             </Typography>
                           </Grid>
-                          <Grid item xs={2}>
+                          <Grid item xs={6} sm={2}>
                             <Typography variant="body2" color="textSecondary" gutterBottom={false}>
                               <span style={{ fontWeight: 'bold' }}>Δ:</span> {data.delayChange}
                             </Typography>
@@ -622,12 +639,12 @@ const DataFeed = () => {
         </Grid>
 
         {/* Chart column */}
-        <Grid item xs={5} sx={{ position: 'sticky', top: 24 }}>
+        <Grid item xs={12} lg={5} sx={{ position: { lg: 'sticky' }, top: { lg: 24 } }}>
           <Box sx={{ 
             p: 2, 
             backgroundColor: 'rgba(255, 255, 255, 0.05)', 
             borderRadius: 1,
-            height: 'calc(100vh - 180px)', // Adjust height to viewport minus header
+            height: { xs: '400px', lg: 'calc(100vh - 180px)' },
             display: 'flex',
             flexDirection: 'column'
           }}>
