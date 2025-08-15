@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { 
   Container, 
@@ -55,7 +55,9 @@ const DATABANK_PRICE_PAIRS = {
 const DataFeed = () => {
   const [currentValue, setCurrentValue] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
+  const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
   const [contractAddress, setContractAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
   const [inputAddress, setInputAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
   const [page, setPage] = useState(1);
@@ -67,7 +69,16 @@ const DataFeed = () => {
   const [customEndDate, setCustomEndDate] = useState('');
   const [isDataBankContract, setIsDataBankContract] = useState(false);
   const [selectedDataBankFeed, setSelectedDataBankFeed] = useState(null);
-  const [lastKnownCounts, setLastKnownCounts] = useState({});
+  // Add new state for incremental loading
+  const [isIncrementalLoading, setIsIncrementalLoading] = useState(false);
+  // Add render key to force re-renders
+  const [renderKey, setRenderKey] = useState(0);
+  // Add flag to prevent auto-refresh until initial fetch is complete
+  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
+  // Use ref to track current data for immediate updates
+  const currentValueRef = useRef([]);
+  // Add state to force re-renders when ref changes
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   // Function to determine which ABI to use based on contract address
   const getContractABI = (address) => {
@@ -107,134 +118,167 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       console.log(`${targetFeed} has ${valueCount} total updates`);
       
       if (valueCount && valueCount > 0) {
-        // Step 2: Iterate through each index to get individual updates
-        for (let index = 0; index < valueCount; index++) {
-          try {
-            console.log(`Fetching ${targetFeed} update ${index + 1}/${valueCount}...`);
-            
-            // Get the individual update data
-            const updateData = await contract.getAggregateByIndex(queryId, index);
-            console.log(`${targetFeed} update ${index + 1} data:`, updateData);
-            
-            if (updateData) {
-              // Extract the core data fields
-              let price = "Processing...";
-              let aggregateTimestamp = 0;
-              let relayTimestamp = 0;
-              let power = 0;
+        // Start incremental loading
+        setIsIncrementalLoading(true);
+        
+        // Step 2: Process transactions asynchronously to allow React to update UI
+        const processTransactions = async () => {
+          for (let index = 0; index < valueCount; index++) {
+            try {
+              console.log(`Fetching ${targetFeed} update ${index + 1}/${valueCount}...`);
               
-              try {
-                // Decode the price from the value field (index 0)
-                if (updateData[0] && updateData[0] !== '0x' && updateData[0] !== '0x0') {
-                  try {
-                    // Decode the bytes to get the actual price
-                    const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], updateData[0]);
-                    const rawPrice = decodedValue[0];
-                    
-                    // Convert from wei to USD (using 18 decimals to get the right price scale)
-                    price = ethers.formatUnits(rawPrice, 18);
-                    
-                    // Format as currency
-                    price = parseFloat(price).toLocaleString('en-US', { 
-                      minimumFractionDigits: 2, 
-                      maximumFractionDigits: 2 
-                    });
-                    
-                    console.log(`Decoded price for ${targetFeed} update ${index + 1}: $${price}`);
-                  } catch (decodeError) {
-                    console.log(`Error decoding price:`, decodeError.message);
-                    price = "Decode error";
+              // Get the individual update data
+              const updateData = await contract.getAggregateByIndex(queryId, index);
+              console.log(`${targetFeed} update ${index + 1} data:`, updateData);
+              
+              if (updateData) {
+                // Extract the core data fields
+                let price = "Processing...";
+                let aggregateTimestamp = 0;
+                let relayTimestamp = 0;
+                let power = 0;
+                
+                try {
+                  // Decode the price from the value field (index 0)
+                  if (updateData[0] && updateData[0] !== '0x' && updateData[0] !== '0x0') {
+                    try {
+                      // Decode the bytes to get the actual price
+                      const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], updateData[0]);
+                      const rawPrice = decodedValue[0];
+                      
+                      // Convert from wei to USD (using 18 decimals to get the right price scale)
+                      price = ethers.formatUnits(rawPrice, 18);
+                      
+                      // Format as currency
+                      price = parseFloat(price).toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      });
+                      
+                      console.log(`Decoded price for ${targetFeed} update ${index + 1}: $${price}`);
+                    } catch (decodeError) {
+                      console.log(`Error decoding price:`, decodeError.message);
+                      price = "Decode error";
+                    }
+                  } else {
+                    price = "0.00";
                   }
-                } else {
-                  price = "0.00";
+                  
+                  // Extract timestamps and power from the update data using numeric indices
+                  power = updateData[1] || 0;                    // index 1: power
+                  aggregateTimestamp = updateData[2] || 0;       // index 2: aggregateTimestamp  
+                  relayTimestamp = updateData[4] || 0;           // index 4: relayTimestamp
+                  
+                } catch (decodeError) {
+                  console.log(`Error decoding ${targetFeed} update ${index + 1}:`, decodeError.message);
+                  price = "Decode error";
                 }
                 
-                // Extract timestamps and power from the update data using numeric indices
-                power = updateData[1] || 0;                    // index 1: power
-                aggregateTimestamp = updateData[2] || 0;       // index 2: aggregateTimestamp  
-                relayTimestamp = updateData[4] || 0;           // index 4: relayTimestamp
+                // Handle timestamp conversion
+                const aggTimestampMs = Number(aggregateTimestamp);
+                const relayTimestampMs = Number(relayTimestamp);
+                const finalRelayTimestamp = relayTimestampMs < 10000000000 ? relayTimestampMs * 1000 : relayTimestampMs;
                 
-              } catch (decodeError) {
-                console.log(`Error decoding ${targetFeed} update ${index + 1}:`, decodeError.message);
-                price = "Decode error";
+                // Calculate time difference in seconds
+                const timeDiff = aggTimestampMs && finalRelayTimestamp 
+                  ? Math.abs(finalRelayTimestamp - aggTimestampMs) / 1000
+                  : 0;
+                
+                // Get real block number from current blockchain state
+                let realBlockNumber = "Fetching...";
+                try {
+                  const currentBlock = await provider.getBlockNumber();
+                  realBlockNumber = currentBlock;
+                  console.log(`📦 Real block number for ${targetFeed} update ${index + 1}: ${realBlockNumber}`);
+                } catch (blockError) {
+                  console.log(`⚠️ Could not fetch real block number, using timestamp approximation:`, blockError.message);
+                  realBlockNumber = Math.floor(aggTimestampMs / 1000) || "Unknown";
+                }
+                
+                // Create the data entry
+                const newTransaction = {
+                  value: price,
+                  timestamp: aggTimestampMs ? new Date(aggTimestampMs).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                  }) : "Unknown",
+                  aggregatePower: power.toString() || "1",
+                  relayTimestamp: finalRelayTimestamp ? new Date(finalRelayTimestamp).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                  }) : "Unknown",
+                  timeDifference: `${timeDiff.toFixed(1)}s`,
+                  blockNumber: realBlockNumber,
+                  pair: targetFeed,
+                  txHash: `update_${targetFeed}_${index}_${Date.now()}`,
+                  note: `Update ${index + 1}/${valueCount}`,
+                  // Keep raw timestamp for sorting
+                  _rawTimestamp: aggTimestampMs
+                };
+                
+                // CRITICAL: Update the UI immediately with each new transaction
+                setCurrentValue(prevData => {
+                  const updatedData = [...prevData, newTransaction];
+                  // Sort by timestamp descending (newest first)
+                  const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+                  // Update ref for immediate access
+                  currentValueRef.current = sortedData;
+                  console.log(`🔄 Ref updated: ${sortedData.length} transactions, latest: ${sortedData[0]?.value}`);
+                  // Force re-render by updating forceUpdate state
+                  setForceUpdate(prev => prev + 1);
+                  return sortedData;
+                });
+                
+                // Force React to re-render immediately by updating render key
+                setRenderKey(prev => prev + 1);
+                
+                // Additional force update to ensure re-render
+                setCurrentValue(currentValue => [...currentValue]);
+                
+                console.log(`✅ Added ${targetFeed} update ${index + 1} to UI immediately`);
+                
+                // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
+                await new Promise(resolve => setTimeout(resolve, 0));
               }
               
-              // Handle timestamp conversion
-              const aggTimestampMs = Number(aggregateTimestamp);
-              const relayTimestampMs = Number(relayTimestamp);
-              const finalRelayTimestamp = relayTimestampMs < 10000000000 ? relayTimestampMs * 1000 : relayTimestampMs;
-              
-              // Calculate time difference in seconds
-              const timeDiff = aggTimestampMs && finalRelayTimestamp 
-                ? Math.abs(finalRelayTimestamp - aggTimestampMs) / 1000
-                : 0;
-              
-              // Get real block number from current blockchain state
-              let realBlockNumber = "Fetching...";
-              try {
-                const currentBlock = await provider.getBlockNumber();
-                realBlockNumber = currentBlock;
-                console.log(`📦 Real block number for ${targetFeed} update ${index + 1}: ${realBlockNumber}`);
-              } catch (blockError) {
-                console.log(`⚠️ Could not fetch real block number, using timestamp approximation:`, blockError.message);
-                realBlockNumber = Math.floor(aggTimestampMs / 1000) || "Unknown";
-              }
-              
-              // Create the data entry
-              data.push({
-                value: price,
-                timestamp: aggTimestampMs ? new Date(aggTimestampMs).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                  hour12: true
-                }) : "Unknown",
-                aggregatePower: power.toString() || "1",
-                relayTimestamp: finalRelayTimestamp ? new Date(finalRelayTimestamp).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                  hour12: true
-                }) : "Unknown",
-                timeDifference: `${timeDiff.toFixed(1)}s`,
-                blockNumber: realBlockNumber,
-                pair: targetFeed,
-                txHash: `update_${targetFeed}_${index}_${Date.now()}`,
-                note: `Update ${index + 1}/${valueCount}`,
-                // Keep raw timestamp for sorting
-                _rawTimestamp: aggTimestampMs
-              });
-              
-              console.log(`Successfully added ${targetFeed} update ${index + 1} to data array`);
+            } catch (indexError) {
+              console.log(`Error fetching ${targetFeed} update ${index + 1}:`, indexError.message);
             }
-            
-          } catch (indexError) {
-            console.log(`Error fetching ${targetFeed} update ${index + 1}:`, indexError.message);
           }
-        }
+          
+          // Finish incremental loading
+          setIsIncrementalLoading(false);
+        };
+        
+        // Start processing transactions asynchronously
+        processTransactions();
       } else {
         console.log(`${targetFeed} has no updates available`);
       }
       
     } catch (functionError) {
       console.log('Error with DataBank contract functions:', functionError.message);
+      setIsIncrementalLoading(false);
     }
     
-    console.log(`Successfully fetched ${data.length} total updates for ${targetFeed}`);
+    console.log(`Successfully fetched all updates for ${targetFeed}`);
     
-    // Sort by raw timestamp descending (newest first)
-    data.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
-    
-    return data;
+    // Return the final data (though UI is already updated incrementally)
+    return [];
     
   } catch (error) {
     console.error('Error fetching DataBank data:', error);
+    setIsIncrementalLoading(false);
     throw error;
   }
 }, [includeBlockTime, avgBlockTime]);
@@ -497,6 +541,24 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   };
 
   useEffect(() => {
+    // Skip main data fetching if a specific DataBank feed is selected
+    if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      console.log('Skipping main data fetch - specific feed selected:', selectedDataBankFeed);
+      return;
+    }
+    
+    // Also skip if we're in the middle of switching to DataBank
+    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() && feedLoading) {
+      console.log('Skipping main data fetch - switching to DataBank feed');
+      return;
+    }
+    
+    // Also skip if we're processing a specific feed
+    if (currentFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      console.log('Skipping main data fetch - processing specific feed:', currentFeed);
+      return;
+    }
+    
     const fetchData = async () => {
       try {
         // Using the correct Saga EVM RPC endpoint
@@ -585,16 +647,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         // Determine which contract type and fetch data accordingly
         if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
           setIsDataBankContract(true);
-          
-          // CRITICAL: Don't override feed data if a specific feed is selected
-          if (selectedDataBankFeed) {
-            console.log('DataBank contract detected with selected feed, skipping main data fetch to preserve feed data');
-            // Don't set processedData to empty - preserve existing feed data
-            return; // Exit early to prevent overriding feed data
-          } else {
-            console.log('DataBank contract detected but no feed selected, setting empty data');
-            processedData = [];
-          }
+          console.log('DataBank contract detected but no feed selected, setting empty data');
+          processedData = [];
         } else {
           setIsDataBankContract(false);
           try {
@@ -608,6 +662,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         if (processedData && processedData.length > 0) {
           console.log('Setting currentValue with data:', processedData);
           setCurrentValue(processedData);
+          currentValueRef.current = processedData;
+          setInitialFetchComplete(true); // Mark initial fetch as complete
         } else {
           console.log('No data retrieved, processedData:', processedData);
           console.log('processedData type:', typeof processedData);
@@ -617,112 +673,180 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         }
 
         setLoading(false);
+        setFeedLoading(false); // Stop feed loading when main data fetch completes
       } catch (err) {
         console.error('Detailed error:', err);
         setError(err.message || 'Failed to fetch data');
         setLoading(false);
+        setFeedLoading(false); // Stop feed loading on error
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [contractAddress, includeBlockTime, timeScale, customStartDate, customEndDate, fetchTellorData]);
+  }, [contractAddress, includeBlockTime, timeScale, customStartDate, customEndDate, fetchTellorData, selectedDataBankFeed]);
 
     // Separate useEffect to handle DataBank feed selection changes
   useEffect(() => {
-    if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-      console.log('Selected feed changed, triggering data fetch for:', selectedDataBankFeed);
-      
-      // Initial data fetch when feed selection changes
-      const fetchSelectedFeedData = async () => {
-        try {
-          const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-          const provider = new ethers.JsonRpcProvider(rpcUrl);
-          const contract = new ethers.Contract(
-            contractAddress,
-            DataBankABI.abi,
-            provider
-          );
-          
-          // CRITICAL: Pass the selected feed as the third parameter
-          const data = await fetchDataBankData(contract, provider, selectedDataBankFeed);
-          setCurrentValue(data);
-          setLoading(false);
-          setError(null);
-          
-          // Store the initial transaction count for this feed
-          const initialCount = await contract.getAggregateValueCount(DATABANK_PRICE_PAIRS[selectedDataBankFeed]);
-          setLastKnownCounts(prev => ({ ...prev, [selectedDataBankFeed]: initialCount }));
-          console.log(`📊 Initial transaction count for ${selectedDataBankFeed}: ${initialCount}`);
-        } catch (error) {
-          console.error('Error fetching selected feed data:', error);
-          setError(error.message || 'Failed to fetch selected feed data');
-          setLoading(false);
-        }
-      };
-      
-      // Initial fetch
-      fetchSelectedFeedData();
-      
-      // Set up periodic refresh every 30 seconds for real-time updates
-      const refreshInterval = setInterval(async () => {
-        try {
-          console.log(`🔄 Auto-refreshing ${selectedDataBankFeed} data for new transactions...`);
-          
-          const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-          const provider = new ethers.JsonRpcProvider(rpcUrl);
-          const contract = new ethers.Contract(
-            contractAddress,
-            DataBankABI.abi,
-            provider
-          );
-          
-          // SMART INCREMENTAL UPDATE: Only fetch new transactions
-          const queryId = DATABANK_PRICE_PAIRS[selectedDataBankFeed];
-          const currentCount = await contract.getAggregateValueCount(queryId);
-          const lastCount = lastKnownCounts[selectedDataBankFeed] || 0;
-          
-          if (currentCount > lastCount) {
-            const newTransactionCount = currentCount - lastCount;
-            console.log(`🆕 Found ${newTransactionCount} new transactions for ${selectedDataBankFeed}!`);
-            
-            // Fetch only the new transactions (from lastCount to currentCount-1)
-                            const newTransactions = await fetchNewTransactionsOnly(contract, queryId, lastCount, currentCount);
-            
-            if (newTransactions && newTransactions.length > 0) {
-              // Append new transactions to existing data and sort by timestamp (newest first)
-              setCurrentValue(prevData => {
-                const combinedData = [...prevData, ...newTransactions];
-                // Sort by timestamp in descending order (newest first)
-                const sortedData = combinedData.sort((a, b) => {
-                  const timeA = new Date(a.timestamp).getTime();
-                  const timeB = new Date(b.timestamp).getTime();
-                  return timeB - timeA; // Descending order
-                });
-                return sortedData;
-              });
-              
-              // Update the last known count
-              setLastKnownCounts(prev => ({ ...prev, [selectedDataBankFeed]: currentCount }));
-              console.log(`✅ Added ${newTransactions.length} new transactions to ${selectedDataBankFeed}`);
-            }
-          } else {
-            console.log(`ℹ️ No new transactions for ${selectedDataBankFeed} (count: ${currentCount})`);
-          }
-        } catch (error) {
-          console.error(`❌ Error during auto-refresh for ${selectedDataBankFeed}:`, error.message);
-          // Don't show error to user for background refresh
-        }
-      }, 30000); // Check every 30 seconds
-      
-      // Cleanup interval when feed changes or component unmounts
-      return () => {
-        console.log(`🛑 Stopping auto-refresh for ${selectedDataBankFeed}`);
-        clearInterval(refreshInterval);
-      };
+    console.log('🔄 Feed selection useEffect triggered:', { selectedDataBankFeed, contractAddress, currentFeed, feedLoading });
+    
+    // Only run if we have a selected feed and we're on the DataBank contract
+    if (!selectedDataBankFeed || contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      console.log('🛑 Skipping feed selection useEffect - no feed selected or wrong contract');
+      return;
     }
-  }, [selectedDataBankFeed, contractAddress, fetchDataBankData, lastKnownCounts]);
+    
+    console.log('Selected feed changed, triggering data fetch for:', selectedDataBankFeed);
+    
+    // Prevent duplicate fetches for the same feed
+    if (currentValue.length > 0 && currentValue[0]?.pair === selectedDataBankFeed) {
+      console.log('🛑 Feed data already loaded for', selectedDataBankFeed, ', skipping duplicate fetch');
+      return;
+    }
+    
+    // Set current feed being processed
+    setCurrentFeed(selectedDataBankFeed);
+    
+    // Initial data fetch when feed selection changes
+    const fetchSelectedFeedData = async () => {
+      try {
+        console.log(`🚀 Starting data fetch for ${selectedDataBankFeed}...`);
+        const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const contract = new ethers.Contract(
+          contractAddress,
+          DataBankABI.abi,
+          provider
+        );
+        
+        // Clear existing data before starting incremental fetch
+        setCurrentValue([]);
+        currentValueRef.current = [];
+        
+        // Reset initial fetch flag for new feed
+        setInitialFetchComplete(false);
+        
+        console.log(`📡 Contract created, calling fetchDataBankData...`);
+        const data = await fetchDataBankData(contract, provider, selectedDataBankFeed);
+        console.log(`✅ Data fetch completed`);
+        
+        setLoading(false);
+        setFeedLoading(false);
+        setError(null);
+        
+        console.log(`📊 Fetching transaction count for ${selectedDataBankFeed}...`);
+        // Store the initial transaction count for this feed BEFORE setting up auto-refresh
+        const initialCount = await contract.getAggregateValueCount(DATABANK_PRICE_PAIRS[selectedDataBankFeed]);
+        console.log(`📊 Initial transaction count for ${selectedDataBankFeed}: ${initialCount}`);
+        
+        // Mark initial fetch as complete for this feed
+        setInitialFetchComplete(true);
+        
+        // Set up periodic refresh every 30 seconds for real-time updates
+        const refreshInterval = setInterval(async () => {
+          // Don't run auto-refresh until initial fetch is complete
+          if (!initialFetchComplete) {
+            console.log(`⏳ Skipping auto-refresh - initial fetch not complete yet`);
+            return;
+          }
+          
+          try {
+            console.log(`🔄 Auto-refreshing ${selectedDataBankFeed} data for new transactions...`);
+            
+            const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            const contract = new ethers.Contract(
+              contractAddress,
+              DataBankABI.abi,
+              provider
+            );
+            
+            // Get current total count from blockchain
+            const queryId = DATABANK_PRICE_PAIRS[selectedDataBankFeed];
+            const currentCount = await contract.getAggregateValueCount(queryId);
+            const currentCountNum = Number(currentCount);
+            
+            // Get the current number of transactions we have locally
+            const localTransactionCount = currentValueRef.current.length;
+            
+            console.log(`📊 Auto-refresh check: blockchain=${currentCountNum}, local=${localTransactionCount}`);
+            
+            // Only fetch if there are actually new transactions
+            if (currentCountNum > localTransactionCount) {
+              const newTransactionCount = currentCountNum - localTransactionCount;
+              console.log(`🆕 Found ${newTransactionCount} new transactions for ${selectedDataBankFeed}!`);
+              
+              // Fetch only the new transactions (from local count to current count-1)
+              const newTransactions = await fetchNewTransactionsOnly(contract, queryId, localTransactionCount, currentCountNum);
+              
+              if (newTransactions && newTransactions.length > 0) {
+                // Append new transactions to existing data and sort by timestamp (newest first)
+                setCurrentValue(prevData => {
+                  const combinedData = [...prevData, ...newTransactions];
+                  // Sort by timestamp in descending order (newest first)
+                  const sortedData = combinedData.sort((a, b) => {
+                    const timeA = new Date(a.timestamp).getTime();
+                    const timeB = new Date(b.timestamp).getTime();
+                    return timeB - timeA; // Descending order
+                  });
+                  // Update ref
+                  currentValueRef.current = sortedData;
+                  return sortedData;
+                });
+                
+                console.log(`✅ Added ${newTransactions.length} new transactions to ${selectedDataBankFeed}`);
+              }
+            } else {
+              console.log(`ℹ️ No new transactions for ${selectedDataBankFeed} (blockchain: ${currentCountNum}, local: ${localTransactionCount})`);
+            }
+          } catch (error) {
+            console.error(`❌ Error during auto-refresh for ${selectedDataBankFeed}:`, error.message);
+            // Don't show error to user for background refresh
+          }
+        }, 30000); // Check every 30 seconds
+        
+        // Cleanup interval when feed changes or component unmounts
+        return () => {
+          console.log(`🛑 Stopping auto-refresh for ${selectedDataBankFeed}`);
+          clearInterval(refreshInterval);
+          // Don't clear data here - it causes the data to disappear
+        };
+      } catch (error) {
+        console.error('Error fetching selected feed data:', error);
+        setError(error.message || 'Failed to fetch selected feed data');
+        setLoading(false);
+        setFeedLoading(false);
+        setIsIncrementalLoading(false);
+      }
+    };
+    
+    // Initial fetch
+    console.log(`🔄 Calling fetchSelectedFeedData for ${selectedDataBankFeed}...`);
+    fetchSelectedFeedData();
+    
+  }, [selectedDataBankFeed, contractAddress, fetchDataBankData]);
+
+  // Cleanup effect to clear all data when switching contract types
+  useEffect(() => {
+    // Clear data when switching between DataBank and Tellor contracts
+    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      if (!selectedDataBankFeed) {
+        // If switching to DataBank but no feed selected, clear data
+        setCurrentValue([]);
+        setFeedLoading(false);
+        setInitialFetchComplete(false);
+        currentValueRef.current = [];
+      }
+    } else {
+      // If switching to Tellor, clear any DataBank feed data
+      setSelectedDataBankFeed(null);
+      setFeedLoading(false);
+      setCurrentValue([]); // Clear DataBank data when switching to Tellor
+      setInitialFetchComplete(false);
+      currentValueRef.current = [];
+    }
+  }, [contractAddress, selectedDataBankFeed]);
 
   const handleAddressSubmit = (e) => {
     e.preventDefault();
@@ -1261,21 +1385,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               display: 'block'
             }}
           />
-          {isDataBankContract && (
-            <Typography 
-              variant="caption" 
-                  sx={{
-                color: '#00b96f', 
-                fontWeight: 'bold',
-                display: 'block',
-                mt: 1
-              }}
-            >
-              📊 DataBank Contract Active
-            </Typography>
-          )}
+          
+        </Grid>
               </Grid>
-      </Grid>
 
       {/* Side-by-Side Layout: Left (Price Feeds + Data Feed) | Right (Chart) */}
       <div style={{ 
@@ -1300,25 +1412,43 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             {/* Feed Selection - Responsive Layout */}
             <div style={{ 
               display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '20px'
             }}>
               {/* Ethereum Feeds */}
               <div>
                 <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
-                  🔗 Ethereum Feeds:
+                  Ethereum Feeds:
+                  {feedLoading && !isDataBankContract && (
+                    <span style={{ 
+                      marginLeft: '8px', 
+                      fontSize: '12px', 
+                      opacity: 0.7,
+                      fontWeight: 'normal'
+                    }}>
+                      (Loading...)
+                    </span>
+                  )}
                 </Typography>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 <button
                     onClick={() => {
+                      if (feedLoading) return; // Prevent clicks during loading
+                      
                       console.log('Button clicked for: ETH/USD (Ethereum)');
+                      setFeedLoading(true); // Start loading immediately
                       setSelectedDataBankFeed(null);
                       setIsDataBankContract(false);
                       setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
                       setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                      
+                      // Clear current data to show loading state
+                      setCurrentValue([]);
+                      currentValueRef.current = [];
                     }}
+                    disabled={feedLoading}
                   style={{
-                      minWidth: '100px',
+                      minWidth: '150px',
                     padding: '8px 16px',
                       textTransform: 'none',
                       fontWeight: !isDataBankContract ? 'bold' : 'normal',
@@ -1326,53 +1456,88 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       color: !isDataBankContract ? 'white' : '#0E5353',
                       border: `2px solid #0E5353`,
                     borderRadius: '4px',
-                    cursor: 'pointer',
+                    cursor: feedLoading ? 'not-allowed' : 'pointer',
                       fontSize: '12px',
-                      transition: 'all 0.2s ease'
+                      transition: 'all 0.2s ease',
+                      opacity: feedLoading ? 0.6 : 1
                     }}
                     onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                      if (!feedLoading) {
+                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'transparent';
+                      if (!feedLoading) {
+                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'transparent';
+                      }
                     }}
                   >
-                    ETH/USD
+                    {feedLoading && !isDataBankContract ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                        <CircularProgress size={12} style={{ color: 'white' }} />
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      'ETH/USD'
+                    )}
                 </button>
                 </div>
               </div>
 
               {/* Saga Feeds */}
-              <div>
+              <div style={{ marginLeft: '40px' }}>
                 <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
-                  🚀 Saga Chain Feeds:
+                  Saga Feeds:
+                  {feedLoading && (
+                    <span style={{ 
+                      marginLeft: '8px', 
+                      fontSize: '12px', 
+                      opacity: 0.7,
+                      fontWeight: 'normal'
+                    }}>
+                      (Loading...)
+                    </span>
+                  )}
                 </Typography>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                   {Object.entries(DATABANK_PRICE_PAIRS).map(([pairName, queryId]) => (
                     <button
                       key={pairName}
                       onClick={() => {
+                        if (feedLoading) return; // Prevent clicks during loading
+                        
                         console.log('Button clicked for:', pairName);
                         console.log('Current selectedDataBankFeed:', selectedDataBankFeed);
                         
                         if (selectedDataBankFeed === pairName) {
                           // Deselect if already selected
                           console.log('Deselecting feed:', pairName);
+                          setFeedLoading(true); // Start loading immediately
                           setSelectedDataBankFeed(null);
                           setIsDataBankContract(false);
                           setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
                           setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                          
+                          // Clear current data to show loading state
+                          setCurrentValue([]);
+                          currentValueRef.current = [];
                         } else {
                           // Select this feed
                           console.log('Selecting feed:', pairName);
+                          setFeedLoading(true); // Start loading immediately
                           setSelectedDataBankFeed(pairName);
                           setIsDataBankContract(true);
                           setContractAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
                           setInputAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
+                          
+                          // Clear current data to show loading state
+                          setCurrentValue([]);
+                          currentValueRef.current = [];
                         }
                         
                         console.log('State updates triggered for:', pairName);
                       }}
+                      disabled={feedLoading}
                       style={{ 
                         minWidth: '100px',
                         padding: '8px 16px',
@@ -1382,18 +1547,30 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         color: selectedDataBankFeed === pairName ? 'white' : '#0E5353',
                         border: `2px solid #0E5353`,
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: feedLoading ? 'not-allowed' : 'pointer',
                         fontSize: '12px',
-                        transition: 'all 0.2s ease'
-                    }}
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
                       onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        }
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'transparent';
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'transparent';
+                        }
                       }}
                     >
-                      {pairName}
+                      {feedLoading && selectedDataBankFeed === pairName ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        pairName
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1401,18 +1578,93 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             </div>
           </div>
 
-                    {/* Data Feed - Now Inside Left Column */}
+          {/* Data Feed - Now Inside Left Column */}
           <div style={{ 
             backgroundColor: 'rgba(255, 255, 255, 0.02)',
             borderRadius: '8px',
             width: '100%',
             maxWidth: 'fit-content'
           }}>
-            <Grid container spacing={2}>
+            {/* Feed selection header */}
+            <div style={{ 
+              padding: '16px 20px', 
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)'
+            }}>
+              <Typography variant="h6" sx={{ 
+                color: '#0E5353', 
+                fontWeight: 'bold',
+                fontSize: '16px'
+              }}>
+                {feedLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CircularProgress size={16} style={{ color: '#0E5353' }} />
+                    Loading {selectedDataBankFeed} Feed...
+                  </div>
+                ) : selectedDataBankFeed ? (
+                  `${selectedDataBankFeed} Feed Data`
+                ) : (
+                  'ETH/USD Feed Data'
+                )}
+              </Typography>
+            </div>
+            
+            {/* Show incremental loading status */}
+            {isIncrementalLoading && (
+              <div style={{ 
+                padding: '16px 20px', 
+                textAlign: 'center',
+                color: '#0E5353',
+                backgroundColor: 'rgba(14, 83, 83, 0.1)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <CircularProgress size={16} style={{ color: '#0E5353' }} />
+                  <span>Loading transactions incrementally...</span>
+                </div>
+                <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
+                  Transactions will appear as they're fetched
+                </div>
+              </div>
+            )}
+            
+            {/* Loading indicator for feed selection */}
+            {feedLoading && !isIncrementalLoading && (
+              <div style={{ 
+                padding: '20px', 
+                textAlign: 'center',
+                color: '#0E5353',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+              }}>
+                <CircularProgress size={20} style={{ color: '#0E5353' }} />
+                <span>Fetching {selectedDataBankFeed} data...</span>
+              </div>
+            )}
+            
+            <Grid container spacing={2} key={`${renderKey}-${forceUpdate}`}>
               {/* Data feed items */}
               <Grid item xs={12}>
                 <Grid container spacing={2}>
-                  {Array.isArray(currentValue) && 
+                  {feedLoading ? (
+                    // Show loading state when fetching feed data
+                    <Grid item xs={12}>
+                      <div style={{ 
+                        padding: '40px', 
+                        textAlign: 'center',
+                        color: '#0E5353'
+                      }}>
+                        <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                        <div>Loading {selectedDataBankFeed} data...</div>
+                        <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '8px' }}>
+                          This may take a few moments while we fetch the latest transactions
+                        </div>
+                      </div>
+                    </Grid>
+                  ) : Array.isArray(currentValue) && currentValue.length > 0 ? (
+                    // Show data when available
                     currentValue
                       .slice((page - 1) * rowsPerPage, page * rowsPerPage)
                       .map((data, index) => (
@@ -1441,78 +1693,87 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                             }}
                           >
                             <CardContent sx={{ py: '8px !important' }}>
-                              <Grid container alignItems="center" spacing={2}>
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>
-                                      {isDataBankContract && data.pair ? data.pair : 'ETH/USD'}:
-                                    </span> ${data.value}
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
-                                  </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
-                                  </Typography>
-                                </Grid>
-                                {/* QueryID column removed for Saga feeds as requested */}
-                                <Grid item xs={6} sm={2}>
-                                  <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                    <span style={{ fontWeight: 'bold' }}>Block:</span> 
-                                    <a 
-                                      href={isDataBankContract 
-                                        ? `https://sagaevm.sagaexplorer.io/block/${data.blockNumber}?tab=transactions`
-                                        : `https://sepolia.etherscan.io/block/${data.blockNumber}`
-                                      } 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {data.blockNumber}
-                                    </a>
-                                  </Typography>
+                              <Grid container spacing={2}>
+                                {/* First Row - Main Data */}
+                                <Grid item xs={12}>
+                                  <Grid container alignItems="center" spacing={3}>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>
+                                          {isDataBankContract && data.pair ? data.pair : 'ETH/USD'}:
+                                        </span> ${data.value}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
+                                      </Typography>
+                                    </Grid>
+                                  </Grid>
                                 </Grid>
                               </Grid>
                             </CardContent>
                           </Card>
                         </Grid>
-                      ))}
+                      ))
+                  ) : (
+                    // Show no data message when not loading and no data
+                    <Grid item xs={12}>
+                      <div style={{ 
+                        padding: '40px', 
+                        textAlign: 'center',
+                        color: '#0E5353',
+                        opacity: 0.7
+                      }}>
+                        {loading ? (
+                          <div>
+                            <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                            <div>Loading data...</div>
+                          </div>
+                        ) : (
+                          <div>No data available for the selected feed</div>
+                        )}
+                      </div>
+                    </Grid>
+                  )}
                 </Grid>
                 
                 {/* Pagination */}
                 <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                  <Pagination 
-                    count={Math.ceil((currentValue?.length || 0) / rowsPerPage)}
-                    page={page}
-                    onChange={handlePageChange}
-                    sx={{
-                      '& .MuiPaginationItem-root': {
-                        color: '#0E5353',
-                      },
-                      '& .MuiPaginationItem-page.Mui-selected': {
-                        backgroundColor: '#0E5353',
-                        color: 'white',
-                        '&:hover': {
+                  {!feedLoading && (
+                    <Pagination 
+                      count={Math.ceil((currentValue?.length || 0) / rowsPerPage)}
+                      page={page}
+                      onChange={handlePageChange}
+                      sx={{
+                        '& .MuiPaginationItem-root': {
+                          color: '#0E5353',
+                        },
+                        '& .MuiPaginationItem-page.Mui-selected': {
                           backgroundColor: '#0E5353',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: '#0E5353',
+                          }
                         }
-                      }
-                    }}
-                  />
+                      }}
+                    />
+                  )}
                 </Grid>
               </Grid>
             </Grid>
@@ -1526,19 +1787,60 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           borderRadius: '8px',
           display: 'flex',
           flexDirection: 'column',
-          height: 'fit-content'
+          height: 'fit-content',
+          marginTop: '-60px'
         }}>
-          <BlockTimeToggle />
-          <TimeScaleToggle />
-          {timeScale === 'custom' && <CustomDateRangeInputs />}
+          {/* Chart header */}
+          <div style={{ 
+            marginBottom: '16px',
+            textAlign: 'center'
+          }}>
+            <Typography variant="h6" sx={{ 
+              color: '#0E5353', 
+              fontWeight: 'bold',
+              fontSize: '16px'
+            }}>
+              {feedLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <CircularProgress size={16} style={{ color: '#0E5353' }} />
+                  Loading Chart...
+                </div>
+              ) : (
+                'Price Chart'
+              )}
+            </Typography>
+          </div>
+          
+          {!feedLoading && (
+            <>
+              <BlockTimeToggle />
+              <TimeScaleToggle />
+              {timeScale === 'custom' && <CustomDateRangeInputs />}
+            </>
+          )}
           <div style={{ height: '280px', width: '100%' }}>
-            <Line 
-              options={{
-                ...chartOptions,
-                maintainAspectRatio: false
-              }} 
-              data={prepareChartData(currentValue)} 
-            />
+            {feedLoading ? (
+              <div style={{ 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#0E5353',
+                flexDirection: 'column',
+                gap: '16px'
+              }}>
+                <CircularProgress size={40} style={{ color: '#0E5353' }} />
+                <div>Loading chart data...</div>
+              </div>
+            ) : (
+              <Line 
+                options={{
+                  ...chartOptions,
+                  maintainAspectRatio: false
+                }} 
+                data={prepareChartData(currentValue)} 
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1546,4 +1848,4 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   );
 };
 
-export default DataFeed; 
+export default DataFeed;
