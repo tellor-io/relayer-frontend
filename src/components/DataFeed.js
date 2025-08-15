@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { 
   Container, 
@@ -9,7 +9,9 @@ import {
   CircularProgress,
   TextField,
   Box,
-  Pagination
+  Pagination,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import {
   Chart as ChartJS,
@@ -23,6 +25,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import TellorABI from '../contracts/TellorABI.json';
+import DataBankABI from '../contracts/DataBank.json';
 
 // Register ChartJS components
 ChartJS.register(
@@ -35,83 +38,318 @@ ChartJS.register(
   Legend
 );
 
-const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io/address/0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a";
+const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io/address/";
 const DEFAULT_CONTRACT_ADDRESS = "0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a";
+const DATABANK_CONTRACT_ADDRESS = "0x6f250229af8D83c51500f3565b10E93d8907B644";
+
+// DataBank price pair queryIds (these are the specific feeds we want)
+const DATABANK_PRICE_PAIRS = {
+  'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
+  'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',
+  'SAGA/USD': '0x74c9cfdfd2e4a00a9437bf93bf6051e18e604a976f3fa37faafe0bb5a039431d',
+  'USDC/USD': '0x8ee44cd434ed5b0e007eee581fbe0855336f3f84484e8d9989a620a4a49aa0f7',
+  'USDT/USD': '0x68a37787e65e85768d4aa6e385fb15760d46df0f67a18ec032d8fd5848aca264',
+  'FBTC/USD': '0xc444759b83c7bb0f6694306e1f719e65679d48ad754a31d3a366856becf1e71e'
+};
 
 const DataFeed = () => {
   const [currentValue, setCurrentValue] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
-  const [contractAddress, setContractAddress] = useState(DEFAULT_CONTRACT_ADDRESS);
-  const [inputAddress, setInputAddress] = useState(DEFAULT_CONTRACT_ADDRESS);
+  const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
+  const [contractAddress, setContractAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+  const [inputAddress, setInputAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
-  const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', or 'weekly'
+  const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', 'weekly', or 'custom'
+  const [includeBlockTime, setIncludeBlockTime] = useState(false);
+  const [avgBlockTime, setAvgBlockTime] = useState(0);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [isDataBankContract, setIsDataBankContract] = useState(false);
+  const [selectedDataBankFeed, setSelectedDataBankFeed] = useState(null);
+  // Add new state for incremental loading
+  const [isIncrementalLoading, setIsIncrementalLoading] = useState(false);
+  // Add render key to force re-renders
+  const [renderKey, setRenderKey] = useState(0);
+  // Add flag to prevent auto-refresh until initial fetch is complete
+  const [initialFetchComplete, setInitialFetchComplete] = useState(false);
+  // Use ref to track current data for immediate updates
+  const currentValueRef = useRef([]);
+  // Add state to force re-renders when ref changes
+  const [forceUpdate, setForceUpdate] = useState(0);
+  // Add cancellation token to prevent race conditions
+  const [cancellationToken, setCancellationToken] = useState(0);
+  // Add ref to track current feed for immediate filtering
+  const currentFeedRef = useRef(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const provider = new ethers.providers.JsonRpcProvider("https://eth-sepolia.g.alchemy.com/v2/c9C61uwd-LHombk09TFBRF-NGhNI75JX");
-        const contract = new ethers.Contract(
-          contractAddress,
-          TellorABI,
-          provider
-        );
+  // Function to determine which ABI to use based on contract address
+  const getContractABI = (address) => {
+    if (address.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      return DataBankABI.abi;
+    }
+    return TellorABI;
+  };
 
-        console.log('Fetching extended data...');
+    // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
+  // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
+const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0) => {
+  try {
+    let data = [];
+    
+    // CRITICAL: Only process the SPECIFIC feed passed as parameter
+    if (!targetFeed) {
+      return [];
+    }
+    
+    const queryId = DATABANK_PRICE_PAIRS[targetFeed];
+    if (!queryId) {
+      return [];
+    }
+    
+    try {
+      // Step 1: Get the total count of updates for this specific price pair
+      const valueCount = await contract.getAggregateValueCount(queryId);
+      
+      if (valueCount && valueCount > 0) {
+        // Start incremental loading
+        setIsIncrementalLoading(true);
         
+        // Step 2: Process transactions asynchronously to allow React to update UI
+        const processTransactions = async () => {
+          try {
+            // Validate that we're still processing the correct feed
+            if (currentFeed !== targetFeed) {
+              setIsIncrementalLoading(false);
+              return;
+            }
+            
+            // Check cancellation token
+            if (token !== cancellationToken) {
+              setIsIncrementalLoading(false);
+              return;
+            }
+            
+            // Convert valueCount to number to prevent BigInt mixing errors
+            const numValueCount = Number(valueCount);
+            
+            // Process from most recent (highest index) to oldest (index 0)
+            for (let index = numValueCount - 1; index >= 0; index--) {
+              try {
+                // Check if feed has changed during processing
+                if (currentFeed !== targetFeed) {
+                  setIsIncrementalLoading(false);
+                  return;
+                }
+                
+                // Check cancellation token
+                if (token !== cancellationToken) {
+                  setIsIncrementalLoading(false);
+                  return;
+                }
+                
+                // Get the individual update data
+                const updateData = await contract.getAggregateByIndex(queryId, index);
+                
+                if (updateData) {
+                  // Extract the core data fields
+                  let price = "Processing...";
+                  let aggregateTimestamp = 0;
+                  let relayTimestamp = 0;
+                  let power = 0;
+                  
+                  try {
+                    // Decode the price from the value field (index 0)
+                    if (updateData[0] && updateData[0] !== '0x' && updateData[0] !== '0x0') {
+                      try {
+                        // Decode the bytes to get the actual price
+                        const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], updateData[0]);
+                        const rawPrice = decodedValue[0];
+                        
+                        // Convert from wei to USD (using 18 decimals to get the right price scale)
+                        price = ethers.formatUnits(rawPrice, 18);
+                        
+                        // Format as currency
+                        price = parseFloat(price).toLocaleString('en-US', { 
+                          minimumFractionDigits: 2, 
+                          maximumFractionDigits: 2 
+                        });
+                      } catch (decodeError) {
+                        price = "Decode error";
+                      }
+                    } else {
+                      price = "0.00";
+                    }
+                    
+                    // Extract timestamps and power from the update data using numeric indices
+                    power = Number(updateData[1] || 0);                    // index 1: power
+                    aggregateTimestamp = Number(updateData[2] || 0);       // index 2: aggregateTimestamp  
+                    relayTimestamp = Number(updateData[4] || 0);           // index 4: relayTimestamp
+                    
+                  } catch (decodeError) {
+                    price = "Decode error";
+                  }
+                  
+                  // Handle timestamp conversion
+                  const aggTimestampMs = Number(aggregateTimestamp);
+                  const relayTimestampMs = Number(relayTimestamp);
+                  const finalRelayTimestamp = Number(relayTimestampMs) < 10000000000 ? Number(relayTimestampMs) * 1000 : Number(relayTimestampMs);
+                  
+                  // Calculate time difference in seconds - ensure all values are numbers
+                  let timeDiff = aggTimestampMs && finalRelayTimestamp 
+                    ? Math.abs(Number(finalRelayTimestamp) - Number(aggTimestampMs)) / 1000
+                    : 0;
+                  
+                  // Subtract block time if toggle is enabled (same logic as Tellor feeds)
+                  if (includeBlockTime && avgBlockTime > 0) {
+                    timeDiff = Math.max(0, timeDiff - avgBlockTime);
+                  }
+                  
+                  // Format time difference with same logic as Tellor feeds
+                  const timeDiffFormatted = timeDiff < 60 
+                    ? `${timeDiff.toFixed(1)}s`
+                    : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
+                  
+                  // Get real block number from current blockchain state
+                  let realBlockNumber = "Fetching...";
+                  try {
+                    const currentBlock = await provider.getBlockNumber();
+                    realBlockNumber = currentBlock;
+                  } catch (blockError) {
+                    realBlockNumber = Math.floor(Number(aggTimestampMs) / 1000) || "Unknown";
+                  }
+                  
+                  // Create the data entry
+                  const newTransaction = {
+                    value: price,
+                    timestamp: aggTimestampMs ? new Date(Number(aggTimestampMs)).toLocaleString('en-US', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    }) : "Unknown",
+                    aggregatePower: Number(power).toString() || "1",
+                    relayTimestamp: finalRelayTimestamp ? new Date(Number(finalRelayTimestamp)).toLocaleString('en-US', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    }) : "Unknown",
+                    timeDifference: timeDiffFormatted,
+                    blockNumber: realBlockNumber,
+                    pair: targetFeed,
+                    txHash: `update_${targetFeed}_${index}_${Date.now()}`,
+                    note: `Update ${index + 1}/${valueCount}`,
+                    // Keep raw timestamp for sorting
+                    _rawTimestamp: aggTimestampMs
+                  };
+                  
+                  // CRITICAL: Validate that we're still processing the correct feed
+                  if (currentFeed !== targetFeed) {
+                    // Feed has changed, stop processing this transaction
+                    return;
+                  }
+                  
+                  // CRITICAL: Update the UI immediately with each new transaction
+                  setCurrentValue(prevData => {
+                    // For DataBank contracts, only add data if it's for the current feed
+                    if (isDataBankContract && currentFeedRef.current && newTransaction.pair && newTransaction.pair !== currentFeedRef.current) {
+                      return prevData; // Don't add data for wrong feed
+                    }
+                    
+                    const updatedData = [...prevData, newTransaction];
+                    // Sort by timestamp descending (newest first)
+                    const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+                    // Update ref for immediate access
+                    currentValueRef.current = sortedData;
+                    // Force re-render by updating forceUpdate state
+                    setForceUpdate(prev => prev + 1);
+                    return sortedData;
+                  });
+                  
+                  // Force React to re-render immediately by updating render key
+                  setRenderKey(prev => prev + 1);
+                  
+                  // Additional force update to ensure re-render
+                  setCurrentValue(currentValue => [...currentValue]);
+                  
+                  // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
+                  await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                
+              } catch (indexError) {
+                // Silent error handling
+              }
+            }
+            
+            // Finish incremental loading
+            setIsIncrementalLoading(false);
+          } catch (error) {
+            setIsIncrementalLoading(false);
+          }
+        };
+        
+        // Start processing transactions asynchronously
+        processTransactions();
+      }
+      
+    } catch (functionError) {
+      setIsIncrementalLoading(false);
+    }
+    
+    // Return the final data (though UI is already updated incrementally)
+    return [];
+    
+  } catch (error) {
+    setIsIncrementalLoading(false);
+    throw error;
+  }
+}, [includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
+
+  // Function to fetch data from Tellor contract
+  const fetchTellorData = useCallback(async (contract, provider) => {
+    try {
         const result = await contract.getAllExtendedData();
-        console.log('Raw result:', result);
 
         if (result && result.length > 0) {
-          console.log('Number of transactions:', result.length);
-          console.log('Sample transaction data:', result[0]);
-          
           // Process all transactions, sort by timestamp descending
-          const processedData = result.map((data, index, array) => {
-            const timestamp = data.timestamp.toNumber();
-            const relayTimestamp = data.relayTimestamp.toNumber();
+          const processedData = await Promise.all(result.map(async (data, index, array) => {
+            // Convert BigInt values to numbers
+            const timestamp = typeof data.timestamp === 'bigint' ? Number(data.timestamp) : Number(data.timestamp);
+            const relayTimestamp = typeof data.relayTimestamp === 'bigint' ? Number(data.relayTimestamp) : Number(data.relayTimestamp);
+            const value = data.value; // Keep as is for ethers.formatUnits
+            const aggregatePower = typeof data.aggregatePower === 'bigint' ? Number(data.aggregatePower) : Number(data.aggregatePower);
             
             // Calculate time difference in seconds for current row
-            const timeDiff = Math.abs(relayTimestamp - (timestamp / 1000));
+            let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
+            
+            // Subtract block time if toggle is enabled
+          if (includeBlockTime && avgBlockTime > 0) {
+            timeDiff = Math.max(0, timeDiff - avgBlockTime);
+            }
+            
             const timeDiffFormatted = timeDiff < 60 
               ? `${timeDiff.toFixed(1)}s`
               : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
-
-            // Calculate difference with previous delay
-            let delayChange = '-';  // Default value
-            if (index > 0) {
-              const prevData = array[index - 1];
-              const prevTimestamp = prevData.timestamp.toNumber();
-              const prevRelayTimestamp = prevData.relayTimestamp.toNumber();
-              const prevTimeDiff = Math.abs(prevRelayTimestamp - (prevTimestamp / 1000));
-              
-              // Calculate the difference in delays using the exact values
-              const difference = timeDiff - prevTimeDiff;
-              
-              // Format the difference using the same logic as the main delay
-              if (Math.abs(difference) < 0.1) { // If difference is negligible
-                delayChange = '±0s';
-              } else if (Math.abs(difference) < 60) {
-                delayChange = `${difference > 0 ? '+' : ''}${difference.toFixed(1)}s`;
-              } else {
-                const mins = Math.floor(Math.abs(difference) / 60);
-                const secs = (Math.abs(difference) % 60).toFixed(1);
-                delayChange = `${difference > 0 ? '+' : '-'}${mins}m ${secs}s`;
-              }
+            
+            // Get real block number from current blockchain state
+            let realBlockNumber = "Fetching...";
+            try {
+              const currentBlock = await provider.getBlockNumber();
+              realBlockNumber = currentBlock;
+            } catch (blockError) {
+              realBlockNumber = Math.floor(Number(timestamp) / 1000) || "Unknown";
             }
-
-            console.log('Raw timestamps:', {
-              timestamp,
-              relayTimestamp,
-              timestampDate: new Date(timestamp),
-              relayDate: new Date(relayTimestamp * 1000),
-              timeDiff,
-              timeDiffFormatted
-            });
             
             return {
-              value: Number(ethers.utils.formatUnits(data.value, 18)).toLocaleString(undefined, {
+              value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
               }),
@@ -124,7 +362,7 @@ const DataFeed = () => {
                 second: '2-digit',
                 hour12: true
               }),
-              aggregatePower: Number(data.aggregatePower).toLocaleString(),
+              aggregatePower: aggregatePower.toLocaleString(),
               relayTimestamp: new Date(relayTimestamp * 1000).toLocaleString('en-US', {
                 year: 'numeric',
                 month: '2-digit',
@@ -135,37 +373,509 @@ const DataFeed = () => {
                 hour12: true
               }),
               timeDifference: timeDiffFormatted,
-              delayChange: delayChange,
-              blockNumber: Math.floor(timestamp / 1000) // Convert timestamp to approximate block number
+              blockNumber: realBlockNumber,
+              // Keep raw timestamp for sorting
+              _rawTimestamp: Number(timestamp)
             };
-          }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          }));
           
-          console.log('First processed item:', processedData[0]);
+          // Sort by raw timestamp descending (newest first)
+          processedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
           
-          setCurrentValue(processedData);
+        return processedData;
         } else {
           throw new Error('No data retrieved from contract');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }, [includeBlockTime, avgBlockTime]);
+
+  // Function to fetch only new transactions (for incremental updates)
+  const fetchNewTransactionsOnly = useCallback(async (contract, queryId, startIndex, endIndex, token = 0) => {
+    try {
+      // Validate that we're still processing the correct feed
+      if (currentFeed !== selectedDataBankFeed) {
+        return [];
+      }
+      
+      // Check cancellation token
+      if (token !== cancellationToken) {
+        return [];
+      }
+      
+      // Create provider for block number fetching
+      const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      
+      let newData = [];
+      
+      // Only fetch the new transactions (from startIndex to endIndex-1)
+      for (let index = startIndex; index < endIndex; index++) {
+        try {
+          // Check if feed has changed during processing
+          if (currentFeed !== selectedDataBankFeed) {
+            return [];
+          }
+          
+          // Check cancellation token
+          if (token !== cancellationToken) {
+            return [];
+          }
+          
+          // Get the individual update data
+          const updateData = await contract.getAggregateByIndex(queryId, index);
+          
+          if (updateData) {
+            // Extract the core data fields (same logic as main function)
+            let price = "Processing...";
+            let aggregateTimestamp = 0;
+            let relayTimestamp = 0;
+            let power = 0;
+            
+            try {
+              // Decode the price from the value field (index 0)
+              if (updateData[0] && updateData[0] !== '0x' && updateData[0] !== '0x0') {
+                try {
+                  const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], updateData[0]);
+                  const rawPrice = decodedValue[0];
+                  price = ethers.formatUnits(rawPrice, 18);
+                  price = parseFloat(price).toLocaleString('en-US', { 
+                    minimumFractionDigits: 2, 
+                    maximumFractionDigits: 2 
+                  });
+                } catch (decodeError) {
+                  price = "Decode error";
+                }
+              } else {
+                price = "0.00";
+              }
+              
+              // Extract timestamps and power
+              power = Number(updateData[1] || 0);
+              aggregateTimestamp = Number(updateData[2] || 0);
+              relayTimestamp = Number(updateData[4] || 0);
+              
+            } catch (decodeError) {
+              price = "Decode error";
+            }
+            
+            // Handle timestamp conversion
+            const aggTimestampMs = Number(aggregateTimestamp);
+            const relayTimestampMs = Number(relayTimestamp);
+            const finalRelayTimestamp = Number(relayTimestampMs) < 10000000000 ? Number(relayTimestampMs) * 1000 : Number(relayTimestampMs);
+            
+            // Calculate time difference
+            let timeDiff = aggTimestampMs && finalRelayTimestamp 
+              ? Math.abs(Number(finalRelayTimestamp) - Number(aggTimestampMs)) / 1000
+              : 0;
+            
+            // Subtract block time if toggle is enabled (same logic as Tellor feeds)
+            if (includeBlockTime && avgBlockTime > 0) {
+              timeDiff = Math.max(0, timeDiff - avgBlockTime);
+            }
+            
+            // Get real block number from current blockchain state
+            let realBlockNumber = "Fetching...";
+            try {
+              const currentBlock = await provider.getBlockNumber();
+              realBlockNumber = currentBlock;
+            } catch (blockError) {
+              realBlockNumber = Math.floor(Number(aggTimestampMs) / 1000) || "Unknown";
+            }
+            
+            // Create the data entry
+            newData.push({
+              value: price,
+              timestamp: aggTimestampMs ? new Date(Number(aggTimestampMs)).toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+              }) : "Unknown",
+              aggregatePower: Number(power).toString() || "1",
+              relayTimestamp: finalRelayTimestamp ? new Date(Number(finalRelayTimestamp)).toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+              }) : "Unknown",
+              timeDifference: timeDiff < 60 
+                ? `${timeDiff.toFixed(1)}s`
+                : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`,
+              blockNumber: realBlockNumber,
+              pair: selectedDataBankFeed,
+              txHash: `update_${selectedDataBankFeed}_${index + 1}_${Date.now()}`,
+              note: `Update ${index + 1} (New)`,
+              // Keep raw timestamp for sorting
+              _rawTimestamp: aggTimestampMs
+            });
+          }
+          
+        } catch (indexError) {
+          // Silent error handling
+        }
+      }
+      
+      // Sort by raw timestamp descending (newest first)
+      newData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+      
+      return newData;
+      
+    } catch (error) {
+      return [];
+    }
+  }, [selectedDataBankFeed, includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
+
+  // Function to calculate average block time
+  const calculateAverageBlockTime = async (provider) => {
+    try {
+      // Get current block
+      const endBlock = await provider.getBlock('latest');
+      
+      // Get block from 100,000 blocks ago
+      const startBlockNumber = Math.max(0, endBlock.number - 100000);
+      const startBlock = await provider.getBlock(startBlockNumber);
+      
+      // Calculate average block time
+      const timeDifference = endBlock.timestamp - startBlock.timestamp;
+      const blockCount = endBlock.number - startBlockNumber;
+      const averageBlockTime = blockCount > 0 ? timeDifference / blockCount : 0;
+      
+      setAvgBlockTime(averageBlockTime);
+      
+      return averageBlockTime;
+    } catch (error) {
+      setAvgBlockTime(0);
+      return 0;
+    }
+  };
+
+  useEffect(() => {
+    // Skip main data fetching if a specific DataBank feed is selected
+    if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      return;
+    }
+    
+    // Also skip if we're in the middle of switching to DataBank
+    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() && feedLoading) {
+      return;
+    }
+    
+    // Also skip if we're processing a specific feed
+    if (currentFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      return;
+    }
+    
+    const fetchData = async () => {
+      try {
+        // Using the correct Saga EVM RPC endpoint
+        
+        const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
+          ? "https://sagaevm.jsonrpc.sagarpc.io" // Correct Saga EVM RPC
+          : "https://eth-sepolia.g.alchemy.com/v2/c9C61uwd-LHombk09TFBRF-NGhNI75JX";
+        
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const contractABI = getContractABI(contractAddress);
+        const contract = new ethers.Contract(
+          contractAddress,
+          contractABI,
+          provider
+        );
+        
+        // Calculate average block time if toggle is enabled
+        if (includeBlockTime) {
+          await calculateAverageBlockTime(provider);
+        }
+        
+        let processedData;
+        
+        // Determine which contract type and fetch data accordingly
+        if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+          setIsDataBankContract(true);
+          processedData = [];
+        } else {
+          setIsDataBankContract(false);
+          try {
+            processedData = await fetchTellorData(contract, provider);
+          } catch (error) {
+            processedData = [];
+          }
+        }
+        
+        if (processedData && processedData.length > 0) {
+          setCurrentValue(processedData);
+          currentValueRef.current = processedData;
+          setInitialFetchComplete(true); // Mark initial fetch as complete
+        } else {
+          // Don't throw error, just set empty array
+          setCurrentValue([]);
         }
 
         setLoading(false);
+        setFeedLoading(false); // Stop feed loading when main data fetch completes
       } catch (err) {
-        console.error('Detailed error:', err);
         setError(err.message || 'Failed to fetch data');
         setLoading(false);
+        setFeedLoading(false); // Stop feed loading on error
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 30000);
-
     return () => clearInterval(interval);
-  }, [contractAddress]);
+  }, [contractAddress, includeBlockTime, timeScale, customStartDate, customEndDate, fetchTellorData, selectedDataBankFeed]);
+
+    // Separate useEffect to handle DataBank feed selection changes
+  useEffect(() => {
+    // Only run if we have a selected feed and we're on the DataBank contract
+    if (!selectedDataBankFeed || contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      return;
+    }
+    
+    // Clear any existing data when switching to a new feed
+    if (currentValue.length > 0 && currentValue[0]?.pair !== selectedDataBankFeed) {
+      setCurrentValue([]);
+      currentValueRef.current = [];
+      setCurrentFeed(selectedDataBankFeed);
+      setPage(1); // Reset to first page
+    }
+    
+    // Prevent duplicate fetches for the same feed if data already exists
+    if (currentValue.length > 0 && currentValue[0]?.pair === selectedDataBankFeed) {
+      return;
+    }
+    
+    // Set current feed being processed
+    setCurrentFeed(selectedDataBankFeed);
+    
+    // Initial data fetch when feed selection changes
+    const fetchSelectedFeedData = async () => {
+      try {
+        const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const contract = new ethers.Contract(
+          contractAddress,
+          DataBankABI.abi,
+          provider
+        );
+        
+        // Clear existing data before starting incremental fetch
+        setCurrentValue([]);
+        currentValueRef.current = [];
+        
+        // Reset initial fetch flag for new feed
+        setInitialFetchComplete(false);
+        
+        // Calculate average block time if toggle is enabled (same as Tellor feeds)
+        if (includeBlockTime) {
+          await calculateAverageBlockTime(provider);
+        }
+        
+        const data = await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken);
+        
+        setLoading(false);
+        setFeedLoading(false);
+        setError(null);
+        
+        // Store the initial transaction count for this feed BEFORE setting up auto-refresh
+        const initialCount = await contract.getAggregateValueCount(DATABANK_PRICE_PAIRS[selectedDataBankFeed]);
+        
+        // Mark initial fetch as complete for this feed
+        setInitialFetchComplete(true);
+        
+        // Set up periodic refresh every 30 seconds for real-time updates
+        const refreshInterval = setInterval(async () => {
+          // Don't run auto-refresh until initial fetch is complete
+          if (!initialFetchComplete) {
+            return;
+          }
+          
+          // Validate that we're still processing the correct feed
+          if (currentFeed !== selectedDataBankFeed) {
+            return;
+          }
+          
+          try {
+            const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            const contract = new ethers.Contract(
+              contractAddress,
+              DataBankABI.abi,
+              provider
+            );
+            
+            // Get current total count from blockchain
+            const queryId = DATABANK_PRICE_PAIRS[selectedDataBankFeed];
+            const currentCount = await contract.getAggregateValueCount(queryId);
+            const currentCountNum = Number(currentCount);
+            
+            // Get the current number of transactions we have locally
+            const localTransactionCount = currentValueRef.current.length;
+            
+            // Only fetch if there are actually new transactions
+            if (currentCountNum > localTransactionCount) {
+              const newTransactionCount = currentCountNum - localTransactionCount;
+              
+              // Recalculate block time if toggle is enabled (same as Tellor feeds)
+              if (includeBlockTime) {
+                await calculateAverageBlockTime(provider);
+              }
+              
+              // Fetch only the new transactions (from local count to current count-1)
+              const newTransactions = await fetchNewTransactionsOnly(contract, queryId, localTransactionCount, currentCountNum, cancellationToken);
+              
+              if (newTransactions && newTransactions.length > 0) {
+                // Validate that we're still processing the correct feed before updating
+                if (currentFeed !== selectedDataBankFeed) {
+                  return;
+                }
+                
+                // Append new transactions to existing data and sort by timestamp (newest first)
+                setCurrentValue(prevData => {
+                  // For DataBank contracts, filter to only include data for current feed
+                  let filteredNewTransactions;
+                  if (isDataBankContract && currentFeedRef.current) {
+                    filteredNewTransactions = newTransactions.filter(tx => tx.pair && tx.pair === currentFeedRef.current);
+                  } else {
+                    // For Tellor contracts, include all new transactions
+                    filteredNewTransactions = newTransactions;
+                  }
+                  
+                  if (filteredNewTransactions.length === 0) {
+                    return prevData; // No valid transactions to add
+                  }
+                  
+                  const combinedData = [...prevData, ...filteredNewTransactions];
+                  // Sort by timestamp in descending order (newest first)
+                  const sortedData = combinedData.sort((a, b) => {
+                    const timeA = new Date(a.timestamp).getTime();
+                    const timeB = new Date(b.timestamp).getTime();
+                    return timeB - timeA; // Descending order
+                  });
+                  // Update ref
+                  currentValueRef.current = sortedData;
+                  return sortedData;
+                });
+              }
+            }
+          } catch (error) {
+            // Silent error handling for background refresh
+          }
+        }, 30000); // Check every 30 seconds
+        
+        // Cleanup interval when feed changes or component unmounts
+        return () => {
+          clearInterval(refreshInterval);
+          // Clear data if feed has changed during cleanup
+          if (currentFeed !== selectedDataBankFeed) {
+            setCurrentValue([]);
+            currentValueRef.current = [];
+            setInitialFetchComplete(false);
+            setIsIncrementalLoading(false);
+            setPage(1); // Reset to first page
+          }
+        };
+      } catch (error) {
+        setError(error.message || 'Failed to fetch selected feed data');
+        setLoading(false);
+        setFeedLoading(false);
+        setIsIncrementalLoading(false);
+      }
+    };
+    
+    // Initial fetch
+    fetchSelectedFeedData();
+    
+  }, [selectedDataBankFeed, contractAddress, fetchDataBankData]);
+
+  // Effect to immediately clear data when feed changes
+  useEffect(() => {
+    // Clear data immediately when feed changes
+    if (selectedDataBankFeed) {
+      // Force clear all data immediately
+      setCurrentValue([]);
+      currentValueRef.current = [];
+      setInitialFetchComplete(false);
+      setIsIncrementalLoading(false);
+      setCurrentFeed(selectedDataBankFeed);
+      currentFeedRef.current = selectedDataBankFeed; // Update ref immediately
+      setPage(1); // Reset to first page
+      
+      // Force a re-render to ensure UI updates
+      setForceUpdate(prev => prev + 1);
+      setRenderKey(prev => prev + 1);
+    } else {
+      // If no feed selected, clear everything
+      setCurrentValue([]);
+      currentValueRef.current = [];
+      setInitialFetchComplete(false);
+      setIsIncrementalLoading(false);
+      setCurrentFeed(null);
+      currentFeedRef.current = null; // Update ref immediately
+      setPage(1); // Reset to first page
+      
+      // Force a re-render to ensure UI updates
+      setForceUpdate(prev => prev + 1);
+      setRenderKey(prev => prev + 1);
+    }
+  }, [selectedDataBankFeed]);
+
+  // Cleanup effect to clear all data when switching contract types
+  useEffect(() => {
+    // Clear data when switching between DataBank and Tellor contracts
+    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      if (!selectedDataBankFeed) {
+        // If switching to DataBank but no feed selected, clear data
+        setCurrentValue([]);
+        setFeedLoading(false);
+        setInitialFetchComplete(false);
+        currentValueRef.current = [];
+        setCurrentFeed(null);
+        setIsIncrementalLoading(false);
+        setPage(1); // Reset to first page
+      }
+    } else {
+      // If switching to Tellor, clear any DataBank feed data but allow Tellor data
+      setSelectedDataBankFeed(null);
+      setFeedLoading(false);
+      setCurrentValue([]); // Clear DataBank data when switching to Tellor
+      setInitialFetchComplete(false);
+      currentValueRef.current = [];
+      setCurrentFeed(null);
+      currentFeedRef.current = null; // Clear feed ref to allow all data
+      setIsIncrementalLoading(false);
+      setPage(1); // Reset to first page
+    }
+  }, [contractAddress, selectedDataBankFeed]);
+
+  // Cleanup effect for component unmount and major state changes
+  useEffect(() => {
+    return () => {
+      // Clear all data and states when component unmounts
+      setCurrentValue([]);
+      currentValueRef.current = [];
+      setInitialFetchComplete(false);
+      setIsIncrementalLoading(false);
+      setCurrentFeed(null);
+      setFeedLoading(false);
+      setPage(1); // Reset to first page
+    };
+  }, []);
 
   const handleAddressSubmit = (e) => {
     e.preventDefault();
-    if (ethers.utils.isAddress(inputAddress)) {
+    if (ethers.isAddress(inputAddress)) {
       setContractAddress(inputAddress);
       setError(null);
+      // Reset page when switching contracts
+      setPage(1);
     } else {
       setError('Invalid Ethereum address');
     }
@@ -182,7 +892,7 @@ const DataFeed = () => {
       gap: '8px',
       justifyContent: 'center' 
     }}>
-      {['recent', 'daily', 'weekly'].map((scale) => (
+      {['recent', 'daily', 'weekly', 'custom'].map((scale) => (
         <button
           key={scale}
           onClick={() => setTimeScale(scale)}
@@ -196,9 +906,128 @@ const DataFeed = () => {
             textTransform: 'capitalize'
           }}
         >
-          {scale}
+          {scale === 'custom' ? 'Date Range' : scale}
         </button>
       ))}
+    </div>
+  );
+
+  const CustomDateRangeInputs = () => (
+    <div style={{ 
+      marginBottom: '0.5rem', 
+      display: 'flex', 
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '12px'
+    }}>
+      <TextField
+        label="Start Date"
+        type="datetime-local"
+        value={customStartDate}
+        onChange={(e) => setCustomStartDate(e.target.value)}
+        size="small"
+        InputLabelProps={{
+          shrink: true,
+          style: { color: '#0E5353', fontSize: '0.875rem' }
+        }}
+        inputProps={{
+          style: { color: '#0E5353', fontSize: '0.875rem' }
+        }}
+        sx={{
+          width: '180px',
+          '& .MuiOutlinedInput-root': {
+            '& fieldset': {
+              borderColor: '#0E5353',
+            },
+            '&:hover fieldset': {
+              borderColor: '#0E5353',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: '#0E5353',
+            },
+          },
+          '& .MuiInputLabel-root': {
+            color: '#0E5353',
+            '&.Mui-focused': {
+              color: '#0E5353',
+            },
+          },
+        }}
+      />
+      <TextField
+        label="End Date"
+        type="datetime-local"
+        value={customEndDate}
+        onChange={(e) => setCustomEndDate(e.target.value)}
+        size="small"
+        InputLabelProps={{
+          shrink: true,
+          style: { color: '#0E5353', fontSize: '0.875rem' }
+        }}
+        inputProps={{
+          style: { color: '#0E5353', fontSize: '0.875rem' }
+        }}
+        sx={{
+          width: '180px',
+          '& .MuiOutlinedInput-root': {
+            '& fieldset': {
+              borderColor: '#0E5353',
+            },
+            '&:hover fieldset': {
+              borderColor: '#0E5353',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: '#0E5353',
+            },
+          },
+          '& .MuiInputLabel-root': {
+            color: '#0E5353',
+            '&.Mui-focused': {
+              color: '#0E5353',
+            },
+          },
+        }}
+      />
+    </div>
+  );
+
+  const BlockTimeToggle = () => (
+    <div style={{ 
+      marginBottom: '1rem', 
+      display: 'flex', 
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: '8px'
+    }}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={includeBlockTime}
+            onChange={(e) => setIncludeBlockTime(e.target.checked)}
+            sx={{
+              '& .MuiSwitch-switchBase.Mui-checked': {
+                color: '#00b96f',
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 185, 111, 0.08)',
+                },
+              },
+              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                backgroundColor: '#00b96f',
+              },
+            }}
+          />
+        }
+        label={
+          <Typography variant="body2" sx={{ color: '#0E5353', fontSize: '0.875rem' }}>
+            Remove EVM Block Time
+            {includeBlockTime && avgBlockTime > 0 && (
+              <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+                ({avgBlockTime.toFixed(1)}s avg)
+              </span>
+            )}
+          </Typography>
+        }
+      />
     </div>
   );
 
@@ -215,6 +1044,21 @@ const DataFeed = () => {
         // Get the last 12 data points
         const last12Entries = sortedData.slice(-12);
         
+        const delays = last12Entries.map(item => {
+          let delay = parseFloat(item.timeDifference);
+          if (item.timeDifference.includes('m')) {
+            const [min, sec] = item.timeDifference.split('m');
+            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+          }
+          return delay;
+        });
+
+        // Calculate rolling average for benchmark line
+        const rollingAverages = delays.map((_, index) => {
+          const subset = delays.slice(0, index + 1);
+          return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+        });
+        
         processedData = {
           labels: last12Entries.map(item => 
             new Date(item.timestamp).toLocaleTimeString('en-US', {
@@ -223,174 +1067,226 @@ const DataFeed = () => {
               hour12: true
             })
           ),
-          delays: last12Entries.map(item => {
+          delays: delays,
+          averageDelay: rollingAverages
+        };
+        break;
+      }
+      
+      case 'daily': {
+        // Get all data points from the last 7 days
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= sevenDaysAgo);
+        
+        // Limit to max 100 points to prevent overcrowding
+        if (recentData.length > 100) {
+          const step = Math.ceil(recentData.length / 100);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const delays = recentData.map(item => {
+          let delay = parseFloat(item.timeDifference);
+          if (item.timeDifference.includes('m')) {
+            const [min, sec] = item.timeDifference.split('m');
+            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+          }
+          return delay;
+        });
+
+        // Calculate rolling average for benchmark line
+        const rollingAverages = delays.map((_, index) => {
+          const subset = delays.slice(0, index + 1);
+          return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })
+          ),
+          delays: delays,
+          averageDelay: rollingAverages
+        };
+        break;
+      }
+      
+      case 'weekly': {
+        // Get all data points from the last 4 weeks
+        const fourWeeksAgo = new Date();
+        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+        
+        // Limit to max 200 points to prevent overcrowding
+        if (recentData.length > 200) {
+          const step = Math.ceil(recentData.length / 200);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const delays = recentData.map(item => {
+          let delay = parseFloat(item.timeDifference);
+          if (item.timeDifference.includes('m')) {
+            const [min, sec] = item.timeDifference.split('m');
+            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+          }
+          return delay;
+        });
+
+        // Calculate rolling average for benchmark line
+        const rollingAverages = delays.map((_, index) => {
+          const subset = delays.slice(0, index + 1);
+          return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })
+          ),
+          delays: delays,
+          averageDelay: rollingAverages
+        };
+        break;
+      }
+      
+      case 'custom': {
+        // Handle custom date range
+        if (!customStartDate || !customEndDate) {
+          // If no custom dates set, fall back to weekly view
+          const fourWeeksAgo = new Date();
+          fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+          
+          let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+          
+          if (recentData.length > 200) {
+            const step = Math.ceil(recentData.length / 200);
+            recentData = recentData.filter((_, index) => index % step === 0);
+          }
+          
+          const delays = recentData.map(item => {
             let delay = parseFloat(item.timeDifference);
             if (item.timeDifference.includes('m')) {
               const [min, sec] = item.timeDifference.split('m');
               delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
             }
             return delay;
-          }),
-          deltas: last12Entries.map(item => {
-            if (item.delayChange === '-' || item.delayChange === '±0s') return 0;
-            let delta = parseFloat(item.delayChange);
-            if (item.delayChange.includes('m')) {
-              const [min, sec] = item.delayChange.split('m');
-              delta = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
+          });
+
+          const rollingAverages = delays.map((_, index) => {
+            const subset = delays.slice(0, index + 1);
+            return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+          });
+          
+          processedData = {
+            labels: recentData.map(item => 
+              new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              })
+            ),
+            delays: delays,
+            averageDelay: rollingAverages
+          };
+        } else {
+          // Filter data by custom date range
+          const startDate = new Date(customStartDate);
+          const endDate = new Date(customEndDate);
+          
+          let customData = sortedData.filter(item => {
+            const itemDate = new Date(item.timestamp);
+            return itemDate >= startDate && itemDate <= endDate;
+          });
+          
+          // Limit to max 300 points to prevent overcrowding
+          if (customData.length > 300) {
+            const step = Math.ceil(customData.length / 300);
+            customData = customData.filter((_, index) => index % step === 0);
+          }
+          
+          const delays = customData.map(item => {
+            let delay = parseFloat(item.timeDifference);
+            if (item.timeDifference.includes('m')) {
+              const [min, sec] = item.timeDifference.split('m');
+              delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
             }
-            return delta;
-          })
-        };
+            return delay;
+          });
+
+          const rollingAverages = delays.map((_, index) => {
+            const subset = delays.slice(0, index + 1);
+            return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+          });
+          
+          processedData = {
+            labels: customData.map(item => 
+              new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              })
+            ),
+            delays: delays,
+            averageDelay: rollingAverages
+          };
+        }
         break;
       }
       
-      case 'daily': {
-        // Group by day and calculate averages
-        const dailyGroups = sortedData.reduce((acc, item) => {
-          const date = new Date(item.timestamp);
-          const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-          
-          if (!acc[dayKey]) {
-            acc[dayKey] = { 
-              delays: [], 
-              deltas: [],
-              date: date
-            };
-          }
-          
-          // Parse delay value
+      default: {
+        // Fall back to weekly view for any unexpected timeScale
+        const fourWeeksAgo = new Date();
+        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+        
+        if (recentData.length > 200) {
+          const step = Math.ceil(recentData.length / 200);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const delays = recentData.map(item => {
           let delay = parseFloat(item.timeDifference);
           if (item.timeDifference.includes('m')) {
             const [min, sec] = item.timeDifference.split('m');
             delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
           }
+          return delay;
+        });
 
-          // Parse delta value
-          let delta = null;
-          if (item.delayChange !== '-' && item.delayChange !== '±0s') {
-            if (item.delayChange.includes('m')) {
-              const match = item.delayChange.match(/([+-])?(\d+)m\s*(\d+\.?\d*)s/);
-              if (match) {
-                const [_, sign, mins, secs] = match;
-                const totalSeconds = (parseInt(mins) * 60) + parseFloat(secs);
-                delta = sign === '-' ? -totalSeconds : totalSeconds;
-              }
-            } else {
-              const match = item.delayChange.match(/([+-])?(\d+\.?\d*)s/);
-              if (match) {
-                const [_, sign, seconds] = match;
-                delta = parseFloat(seconds);
-                if (sign === '-') delta = -delta;
-              }
-            }
-          } else if (item.delayChange === '±0s') {
-            delta = 0;
-          }
-          
-          if (!isNaN(delay)) acc[dayKey].delays.push(delay);
-          if (delta !== null) acc[dayKey].deltas.push(delta);
-          
-          return acc;
-        }, {});
-
-        // Get last 7 days
-        const dayKeys = Object.keys(dailyGroups)
-          .sort()
-          .slice(-7);
-
+        const rollingAverages = delays.map((_, index) => {
+          const subset = delays.slice(0, index + 1);
+          return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
+        });
+        
         processedData = {
-          labels: dayKeys.map(key => 
-            dailyGroups[key].date.toLocaleString('en-US', { 
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
               month: 'short',
-              day: 'numeric'
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
             })
           ),
-          delays: dayKeys.map(key => {
-            const delays = dailyGroups[key].delays;
-            return delays.length > 0 
-              ? delays.reduce((sum, val) => sum + val, 0) / delays.length 
-              : null;
-          }),
-          deltas: dayKeys.map(key => {
-            const deltas = dailyGroups[key].deltas;
-            return deltas.length > 0 
-              ? deltas.reduce((sum, val) => sum + val, 0) / deltas.length 
-              : null;
-          })
-        };
-        break;
-      }
-      
-      case 'weekly': {
-        // Group by week and calculate averages
-        const weeklyGroups = sortedData.reduce((acc, item) => {
-          const date = new Date(item.timestamp);
-          const weekKey = `${date.getFullYear()}-W${String(Math.ceil((date.getDate() + date.getDay()) / 7)).padStart(2, '0')}`;
-          
-          if (!acc[weekKey]) {
-            acc[weekKey] = { 
-              delays: [], 
-              deltas: [],
-              date: date
-            };
-          }
-          
-          // Parse delay value
-          let delay = parseFloat(item.timeDifference);
-          if (item.timeDifference.includes('m')) {
-            const [min, sec] = item.timeDifference.split('m');
-            delay = (parseInt(min) * 60) + parseFloat(sec.replace('s', ''));
-          }
-
-          // Parse delta value
-          let delta = null;
-          if (item.delayChange !== '-' && item.delayChange !== '±0s') {
-            if (item.delayChange.includes('m')) {
-              const match = item.delayChange.match(/([+-])?(\d+)m\s*(\d+\.?\d*)s/);
-              if (match) {
-                const [_, sign, mins, secs] = match;
-                const totalSeconds = (parseInt(mins) * 60) + parseFloat(secs);
-                delta = sign === '-' ? -totalSeconds : totalSeconds;
-              }
-            } else {
-              const match = item.delayChange.match(/([+-])?(\d+\.?\d*)s/);
-              if (match) {
-                const [_, sign, seconds] = match;
-                delta = parseFloat(seconds);
-                if (sign === '-') delta = -delta;
-              }
-            }
-          } else if (item.delayChange === '±0s') {
-            delta = 0;
-          }
-          
-          if (!isNaN(delay)) acc[weekKey].delays.push(delay);
-          if (delta !== null) acc[weekKey].deltas.push(delta);
-          
-          return acc;
-        }, {});
-
-        // Get last 4 weeks
-        const weekKeys = Object.keys(weeklyGroups)
-          .sort()
-          .slice(-4);
-
-        processedData = {
-          labels: weekKeys.map(key => 
-            `Week ${key.split('-W')[1]}`
-          ),
-          delays: weekKeys.map(key => {
-            const delays = weeklyGroups[key].delays;
-            return delays.length > 0 
-              ? delays.reduce((sum, val) => sum + val, 0) / delays.length 
-              : null;
-          }),
-          deltas: weekKeys.map(key => {
-            const deltas = weeklyGroups[key].deltas;
-            return deltas.length > 0 
-              ? deltas.reduce((sum, val) => sum + val, 0) / deltas.length 
-              : null;
-          })
+          delays: delays,
+          averageDelay: rollingAverages
         };
         break;
       }
@@ -400,18 +1296,27 @@ const DataFeed = () => {
       labels: processedData.labels,
       datasets: [
         {
-          label: `${timeScale === 'recent' ? 'Current' : 'Average'} Delay (seconds)`,
-          data: processedData.delays,
-          borderColor: '#0E5353',
-          backgroundColor: 'rgba(14, 83, 83, 0.5)',
-          tension: 0.4,
+          label: 'Rolling Average',
+          data: processedData.averageDelay,
+          borderColor: '#4e597b',
+          backgroundColor: 'rgba(78, 89, 123, 0.1)',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0,
         },
         {
-          label: `${timeScale === 'recent' ? 'Current' : 'Average'} Delta (seconds)`,
-          data: processedData.deltas,
-          borderColor: '#08D482',
-          backgroundColor: 'rgba(8, 212, 130, 0.5)',
-          tension: 0.4,
+          label: `${timeScale === 'recent' ? 'Current' : 'Individual'} Delay${includeBlockTime ? ' (Block Time Adj.)' : ''} (seconds)`,
+          data: processedData.delays,
+          borderColor: '#00b96f',
+          backgroundColor: 'rgba(0, 185, 111, 0.2)',
+          borderWidth: timeScale === 'recent' ? 2 : 1,
+          pointRadius: timeScale === 'recent' ? 4 : 2,
+          pointHoverRadius: timeScale === 'recent' ? 6 : 4,
+          pointBackgroundColor: '#00b96f',
+          pointBorderColor: '#00b96f',
+          tension: 0.1,
         }
       ]
     };
@@ -434,7 +1339,11 @@ const DataFeed = () => {
       },
       title: {
         display: true,
-        text: 'Last 12 Hours - Delay and Delta',
+        text: `Delay Performance - ${
+          timeScale === 'recent' ? 'Recent' : 
+          timeScale === 'custom' ? 'Custom Date Range' :
+          'Detailed ' + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
+        } View${includeBlockTime ? ' (Block Time Adjusted)' : ''}`,
         color: '#0E5353',
         padding: 20
       }
@@ -483,184 +1392,525 @@ const DataFeed = () => {
 
   return (
     <Container>
+
+
+            {/* Header with Logo and Status */}
       <Grid container alignItems="center" sx={{ mt: 4, mb: 3 }}>
         <Grid item xs={12} sm={6} sx={{ mb: { xs: 2, sm: 0 } }}>
           <img 
             src="/tellor-relayer-logo.png" 
             alt="Tellor Relayer"
             style={{
-              height: '40px',
+              height: '50px',
               width: 'auto',
               display: 'block'
             }}
           />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <form onSubmit={handleAddressSubmit}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={9}>
-                <TextField
-                  fullWidth
-                  label="Contract Address"
-                  variant="outlined"
-                  value={inputAddress}
-                  onChange={(e) => setInputAddress(e.target.value)}
-                  error={!!error && error.includes('address')}
-                  helperText={error && error.includes('address') ? error : ''}
-                  size="small"
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': {
-                        borderColor: '#0E5353',
-                      },
-                      '&:hover fieldset': {
-                        borderColor: '#0E5353',
-                      },
-                      '&.Mui-focused fieldset': {
-                        borderColor: '#0E5353',
-                      },
-                    },
-                    '& .MuiInputLabel-root': {
-                      color: '#0E5353',
-                      '&.Mui-focused': {
-                        color: '#0E5353',
-                      },
-                    },
-                    '& .MuiOutlinedInput-input': {
-                      color: '#0E5353',
-                    },
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <button
-                  type="submit"
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#0E5353',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    width: '100%',
-                    height: '40px'
-                  }}
-                >
-                  Update
-                </button>
-              </Grid>
-            </Grid>
-          </form>
+          
         </Grid>
       </Grid>
 
-      {/* New layout structure for main content */}
-      <Grid container spacing={2}>
-        {/* Data feed column */}
-        <Grid item xs={12} lg={7}>
-          <Grid container spacing={2}>
-            {Array.isArray(currentValue) && 
-              currentValue
-                .slice((page - 1) * rowsPerPage, page * rowsPerPage)
-                .map((data, index) => (
-                  <Grid item xs={12} key={index}>
-                    <Card 
-                      sx={{ 
-                        py: 1, 
-                        cursor: 'pointer',
-                        '&:hover': {
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                          transition: 'background-color 0.3s',
-                          '& .MuiTypography-root': {
-                            color: '#0E5353',
-                            transition: 'color 0.3s'
+      {/* Side-by-Side Layout: Left (Price Feeds + Data Feed) | Right (Chart) */}
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '24px',
+        marginBottom: '20px'
+      }}>
+        {/* Left Column - Price Feeds + Data Feed */}
+        <div style={{ 
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '20px'
+        }}>
+          {/* Oracle Price Feeds */}
+          <div style={{ 
+            padding: '20px', 
+            backgroundColor: 'rgba(14, 83, 83, 0.1)', 
+            borderRadius: '8px',
+            width: '100%'
+          }}>
+            {/* Feed Selection - Responsive Layout */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '20px'
+            }}>
+              {/* Ethereum Feeds */}
+              <div>
+                <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
+                  Ethereum Feeds:
+                  {feedLoading && !isDataBankContract && (
+                    <span style={{ 
+                      marginLeft: '8px', 
+                      fontSize: '12px', 
+                      opacity: 0.7,
+                      fontWeight: 'normal'
+                    }}>
+                      (Loading...)
+                    </span>
+                  )}
+                </Typography>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <button
+                    onClick={() => {
+                      if (feedLoading) return; // Prevent clicks during loading
+                      
+                      setFeedLoading(true); // Start loading immediately
+                      setSelectedDataBankFeed(null);
+                      setIsDataBankContract(false);
+                      setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                      setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                      
+                      // Clear current data to show loading state
+                      setCurrentValue([]);
+                      currentValueRef.current = [];
+                    }}
+                    disabled={feedLoading}
+                  style={{
+                      minWidth: '150px',
+                    padding: '8px 16px',
+                      textTransform: 'none',
+                      fontWeight: !isDataBankContract ? 'bold' : 'normal',
+                      backgroundColor: !isDataBankContract ? '#0E5353' : 'transparent',
+                      color: !isDataBankContract ? 'white' : '#0E5353',
+                      border: `2px solid #0E5353`,
+                    borderRadius: '4px',
+                    cursor: feedLoading ? 'not-allowed' : 'pointer',
+                      fontSize: '12px',
+                      transition: 'all 0.2s ease',
+                      opacity: feedLoading ? 0.6 : 1
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!feedLoading) {
+                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!feedLoading) {
+                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'transparent';
+                      }
+                    }}
+                  >
+                    {feedLoading && !isDataBankContract ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                        <CircularProgress size={12} style={{ color: 'white' }} />
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      'ETH/USD'
+                    )}
+                </button>
+                </div>
+              </div>
+
+              {/* Saga Feeds */}
+              <div style={{ marginLeft: '40px' }}>
+                <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
+                  Saga Feeds:
+                  {feedLoading && (
+                    <span style={{ 
+                      marginLeft: '8px', 
+                      fontSize: '12px', 
+                      opacity: 0.7,
+                      fontWeight: 'normal'
+                    }}>
+                      (Loading...)
+                    </span>
+                  )}
+                </Typography>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {Object.entries(DATABANK_PRICE_PAIRS).map(([pairName, queryId]) => (
+                    <button
+                      key={pairName}
+                      onClick={() => {
+                        if (feedLoading) return; // Prevent clicks during loading
+                        
+                        if (selectedDataBankFeed === pairName) {
+                          // Deselect if already selected
+                          setFeedLoading(true); // Start loading immediately
+                          
+                          // IMMEDIATELY clear all data and cancel operations
+                          setCancellationToken(prev => prev + 1); // Cancel ongoing operations
+                          // Synchronously clear refs first
+                          currentValueRef.current = [];
+                          currentFeedRef.current = null;
+                          // Then clear state
+                          setCurrentValue([]);
+                          setCurrentFeed(null);
+                          setInitialFetchComplete(false);
+                          setIsIncrementalLoading(false);
+                          setPage(1); // Reset to first page
+                          setForceUpdate(prev => prev + 1); // Force immediate re-render
+                          setRenderKey(prev => prev + 1); // Force immediate re-render
+                          
+                          // Then update other states
+                          setSelectedDataBankFeed(null);
+                          setIsDataBankContract(false);
+                          setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                          setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                        } else {
+                          // Select this feed
+                          setFeedLoading(true); // Start loading immediately
+                          
+                          // IMMEDIATELY clear all data and cancel operations
+                          setCancellationToken(prev => prev + 1); // Cancel ongoing operations
+                          // Synchronously clear refs first
+                          currentValueRef.current = [];
+                          currentFeedRef.current = pairName;
+                          // Then clear state
+                          setCurrentValue([]);
+                          setCurrentFeed(pairName);
+                          setInitialFetchComplete(false);
+                          setIsIncrementalLoading(false);
+                          setPage(1); // Reset to first page
+                          setForceUpdate(prev => prev + 1); // Force immediate re-render
+                          setRenderKey(prev => prev + 1); // Force immediate re-render
+                          
+                          // Then update other states
+                          setSelectedDataBankFeed(pairName);
+                          setIsDataBankContract(true);
+                          setContractAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
+                          setInputAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
+                        }
+                      }}
+                      disabled={feedLoading}
+                      style={{ 
+                        minWidth: '100px',
+                        padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: selectedDataBankFeed === pairName ? 'bold' : 'normal',
+                        backgroundColor: selectedDataBankFeed === pairName ? '#0E5353' : 'transparent',
+                        color: selectedDataBankFeed === pairName ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                        borderRadius: '4px',
+                        cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && selectedDataBankFeed === pairName ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        pairName
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Feed - Now Inside Left Column */}
+          <div style={{ 
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            borderRadius: '8px',
+            width: '100%',
+            maxWidth: 'fit-content'
+          }}>
+            
+            {/* Show incremental loading status */}
+            {isIncrementalLoading && (
+              <div style={{ 
+                padding: '16px 20px', 
+                textAlign: 'center',
+                color: '#0E5353',
+                backgroundColor: 'rgba(14, 83, 83, 0.1)',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <CircularProgress size={16} style={{ color: '#0E5353' }} />
+                  <span>Loading transactions ...</span>
+                </div>
+
+              </div>
+            )}
+            
+            {/* Loading indicator for feed selection */}
+            {feedLoading && !isIncrementalLoading && (
+              <div style={{ 
+                padding: '20px', 
+                textAlign: 'center',
+                color: '#0E5353',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+              }}>
+                <CircularProgress size={20} style={{ color: '#0E5353' }} />
+                <span>Fetching {selectedDataBankFeed} data...</span>
+              </div>
+            )}
+            
+            <Grid container spacing={2} key={`${renderKey}-${forceUpdate}`}>
+              {/* Data feed items */}
+              <Grid item xs={12}>
+                <Grid container spacing={2}>
+                  {feedLoading ? (
+                    // Show loading state when fetching feed data
+                    <Grid item xs={12}>
+                      <div style={{ 
+                        padding: '40px', 
+                        textAlign: 'center',
+                        color: '#0E5353'
+                      }}>
+                        <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                        <div>Loading {selectedDataBankFeed} data...</div>
+                        <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '8px' }}>
+                          This may take a few moments while we fetch the latest transactions
+                        </div>
+                      </div>
+                    </Grid>
+                  ) : Array.isArray(currentValue) && currentValue.length > 0 ? (
+                    // Show data when available - FILTER appropriately based on contract type
+                    currentValue
+                      .filter(data => {
+                        // For DataBank contracts, only show current feed data
+                        if (isDataBankContract && currentFeedRef.current && data.pair) {
+                          return data.pair === currentFeedRef.current;
+                        }
+                        // For Tellor contracts, show all data (no filtering)
+                        return true;
+                      })
+                      .slice((page - 1) * rowsPerPage, page * rowsPerPage)
+                      .map((data, index) => (
+                        <Grid item xs={12} key={index}>
+                          <Card 
+                            sx={{ 
+                              py: 1, 
+                              cursor: 'pointer',
+                              '&:hover': {
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                transition: 'background-color 0.3s',
+                                '& .MuiTypography-root': {
+                                  color: '#0E5353',
+                                  transition: 'color 0.3s'
+                                }
+                              }
+                            }}
+                            onClick={() => {
+                              if (isDataBankContract) {
+                                // For DataBank, link to the transactions tab to see all transactions
+                                window.open(`https://sagaevm.sagaexplorer.io/address/${contractAddress}?tab=transactions`, '_blank');
+                              } else {
+                                // For Tellor, use the contract address
+                                window.open(ETHERSCAN_BASE_URL + contractAddress, '_blank');
+                              }
+                            }}
+                          >
+                            <CardContent sx={{ py: '8px !important' }}>
+                              <Grid container spacing={2}>
+                                {/* First Row - Main Data */}
+                                <Grid item xs={12}>
+                                  <Grid container alignItems="center" spacing={3}>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>
+                                          {isDataBankContract && data.pair ? data.pair : 'ETH/USD'}:
+                                        </span> ${data.value}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item xs={12} sm={2.4}>
+                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
+                                        <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
+                                      </Typography>
+                                    </Grid>
+                                  </Grid>
+                                </Grid>
+                              </Grid>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))
+                  ) : (
+                    // Show no data message when not loading and no data
+                    <Grid item xs={12}>
+                      <div style={{ 
+                        padding: '40px', 
+                        textAlign: 'center',
+                        color: '#0E5353',
+                        opacity: 0.7
+                      }}>
+                        {loading ? (
+                          <div>
+                            <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                            <div>Loading data...</div>
+                          </div>
+                        ) : (
+                          <div>No data available for the selected feed</div>
+                        )}
+                      </div>
+                    </Grid>
+                  )}
+                </Grid>
+                
+                {/* Pagination */}
+                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                  {!feedLoading && (
+                    <Pagination 
+                      count={Math.ceil((currentValue?.length || 0) / rowsPerPage)}
+                      page={page}
+                      onChange={handlePageChange}
+                      sx={{
+                        '& .MuiPaginationItem-root': {
+                          color: '#0E5353',
+                        },
+                        '& .MuiPaginationItem-page.Mui-selected': {
+                          backgroundColor: '#0E5353',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: '#0E5353',
                           }
                         }
                       }}
-                      onClick={() => window.open(ETHERSCAN_BASE_URL, '_blank')}
-                    >
-                      <CardContent sx={{ py: '8px !important' }}>
-                        <Grid container alignItems="center" spacing={2}>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>ETH/USD:</span> ${data.value}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
-                            </Typography>
-                          </Grid>
-                          <Grid item xs={6} sm={2}>
-                            <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                              <span style={{ fontWeight: 'bold' }}>Δ:</span> {data.delayChange}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-            <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-              <Pagination 
-                count={Math.ceil((currentValue?.length || 0) / rowsPerPage)}
-                page={page}
-                onChange={handlePageChange}
-                sx={{
-                  '& .MuiPaginationItem-root': {
-                    color: '#0E5353',
-                  },
-                  '& .MuiPaginationItem-page.Mui-selected': {
-                    backgroundColor: '#0E5353',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: '#0E5353',
-                    }
-                  }
-                }}
-              />
+                    />
+                  )}
+                </Grid>
+              </Grid>
             </Grid>
-          </Grid>
-        </Grid>
+          </div>
+        </div>
 
-        {/* Chart column */}
-        <Grid item xs={12} lg={5} sx={{ position: { lg: 'sticky' }, top: { lg: 24 } }}>
-          <Box sx={{ 
-            p: 2, 
-            backgroundColor: 'rgba(255, 255, 255, 0.05)', 
-            borderRadius: 1,
-            height: { xs: '400px', lg: 'calc(100vh - 180px)' },
-            display: 'flex',
-            flexDirection: 'column'
+        {/* Right Column - Chart */}
+        <div style={{ 
+          padding: '24px',
+          backgroundColor: 'rgba(255, 255, 255, 0.08)', 
+          borderRadius: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          height: 'fit-content',
+          border: '1px solid rgba(14, 83, 83, 0.2)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(14, 83, 83, 0.1)',
+          backdropFilter: 'blur(8px)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Chart container background accent */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            background: 'linear-gradient(90deg, #0E5353 0%, #00b96f 50%, #0E5353 100%)',
+            borderRadius: '12px 12px 0 0'
+          }} />
+          
+          {/* Chart header - simple title */}
+          <div style={{ 
+            marginBottom: '20px',
+            textAlign: 'center'
           }}>
-            <TimeScaleToggle />
-            <Line 
-              options={{
-                ...chartOptions,
-                maintainAspectRatio: false
-              }} 
-              data={prepareChartData(currentValue)} 
-            />
-          </Box>
-        </Grid>
-      </Grid>
+            <Typography variant="h6" sx={{ 
+              color: '#0E5353', 
+              fontWeight: 'bold',
+              fontSize: '18px'
+            }}>
+              {feedLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <CircularProgress size={18} style={{ color: '#0E5353' }} />
+                  Loading Chart...
+                </div>
+              ) : (
+                'Performance Analytics Dashboard'
+              )}
+            </Typography>
+          </div>
+          
+          {/* Controls directly in chart container */}
+          {!feedLoading && (
+            <>
+              <BlockTimeToggle />
+              <TimeScaleToggle />
+              {timeScale === 'custom' && <CustomDateRangeInputs />}
+            </>
+          )}
+          
+          {/* Chart canvas container with enhanced styling */}
+          <div style={{ 
+            height: '300px', 
+            width: '100%',
+            padding: '16px',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            borderRadius: '8px',
+            border: '1px solid rgba(14, 83, 83, 0.1)',
+            position: 'relative',
+            marginTop: '16px'
+          }}>
+            {feedLoading ? (
+              <div style={{ 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#0E5353',
+                flexDirection: 'column',
+                gap: '16px'
+              }}>
+                <CircularProgress size={40} style={{ color: '#0E5353' }} />
+                <div>Loading chart data...</div>
+              </div>
+            ) : (
+              <Line 
+                options={{
+                  ...chartOptions,
+                  maintainAspectRatio: false
+                }} 
+                data={prepareChartData(currentValue)} 
+              />
+            )}
+          </div>
+          
+          {/* Chart footer with additional info */}
+          <div style={{
+            marginTop: '16px',
+            padding: '12px 16px',
+            backgroundColor: 'rgba(14, 83, 83, 0.05)',
+            borderRadius: '6px',
+            border: '1px solid rgba(14, 83, 83, 0.08)',
+            textAlign: 'center'
+          }}>
+            <Typography variant="caption" sx={{ 
+              color: '#0E5353', 
+              opacity: 0.6,
+              fontSize: '11px'
+            }}>
+              Data updates every 30 seconds • Hover for detailed metrics
+            </Typography>
+          </div>
+        </div>
+      </div>
     </Container>
   );
 };
 
-export default DataFeed; 
+export default DataFeed;
