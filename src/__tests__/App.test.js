@@ -1,16 +1,16 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import App from './App';
+import App from '../App';
 
 // Mock the DataFeed component
-jest.mock('./components/DataFeed', () => {
+jest.mock('../components/DataFeed', () => {
   return function MockDataFeed() {
     return <div data-testid="data-feed">DataFeed Component</div>;
   };
 });
 
 // Mock the fonts.css import
-jest.mock('./styles/fonts.css', () => ({}));
+jest.mock('../styles/fonts.css', () => ({}));
 
 describe('App Component', () => {
   test('renders without crashing', () => {

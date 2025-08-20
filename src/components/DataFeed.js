@@ -53,6 +53,50 @@ const DATABANK_PRICE_PAIRS = {
 };
 
 const DataFeed = () => {
+  // Helper functions for time string parsing and formatting
+  const parseTimeString = (timeStr) => {
+    if (!timeStr || typeof timeStr !== 'string') return null;
+    
+    // Handle formats like "7.4s", "6m 55.6s", "1h 2m 3s", "54m 55.6s"
+    const timeStrLower = timeStr.toLowerCase();
+    let totalSeconds = 0;
+    
+    // Extract hours
+    const hourMatch = timeStrLower.match(/(\d+)h/);
+    if (hourMatch) {
+      totalSeconds += parseInt(hourMatch[1]) * 3600;
+    }
+    
+    // Extract minutes
+    const minuteMatch = timeStrLower.match(/(\d+)m/);
+    if (minuteMatch) {
+      totalSeconds += parseInt(minuteMatch[1]) * 60;
+    }
+    
+    // Extract seconds
+    const secondMatch = timeStrLower.match(/(\d+(?:\.\d+)?)s/);
+    if (secondMatch) {
+      totalSeconds += parseFloat(secondMatch[1]);
+    }
+    
+    return totalSeconds > 0 ? totalSeconds : null;
+  };
+  
+  const formatTimeString = (seconds) => {
+    if (seconds < 60) {
+      return `${seconds.toFixed(1)}s`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return `${minutes}m ${remainingSeconds.toFixed(1)}s`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainingSeconds = seconds % 60;
+      return `${hours}h ${minutes}m ${remainingSeconds.toFixed(1)}s`;
+    }
+  };
+
   const [currentValue, setCurrentValue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
@@ -94,7 +138,8 @@ const DataFeed = () => {
 
     // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
   // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
-const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0) => {
+const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0, blockTimeOverride = null) => {
+  console.log('fetchDataBankData called with:', { targetFeed, blockTimeOverride, includeBlockTime, avgBlockTime });
   try {
     let data = [];
     
@@ -202,9 +247,27 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     : 0;
                   
                   // Subtract block time if toggle is enabled (same logic as Tellor feeds)
-                  if (includeBlockTime && avgBlockTime > 0) {
-                    timeDiff = Math.max(0, timeDiff - avgBlockTime);
+                  const effectiveBlockTime = blockTimeOverride !== null ? blockTimeOverride : avgBlockTime;
+                  console.log('=== SAGA FEED DATA PROCESSING ===');
+                  console.log('includeBlockTime:', includeBlockTime);
+                  console.log('effectiveBlockTime:', effectiveBlockTime);
+                  console.log('avgBlockTime:', avgBlockTime);
+                  console.log('blockTimeOverride:', blockTimeOverride);
+                  console.log('Original timeDiff:', timeDiff);
+                  
+                  if (includeBlockTime && effectiveBlockTime > 0) {
+                    const adjustedTimeDiff = Math.max(0, timeDiff - effectiveBlockTime);
+                    console.log('✅ APPLYING BLOCK TIME:', timeDiff, '-', effectiveBlockTime, '=', adjustedTimeDiff);
+                    timeDiff = adjustedTimeDiff;
+                  } else if (includeBlockTime && effectiveBlockTime === 0) {
+                    console.log('❌ Block time toggle enabled but effectiveBlockTime is 0 - this might be the issue');
+                  } else if (!includeBlockTime) {
+                    console.log('❌ Block time toggle is OFF');
+                  } else {
+                    console.log('❌ Unknown condition - includeBlockTime:', includeBlockTime, 'effectiveBlockTime:', effectiveBlockTime);
                   }
+                  console.log('Final timeDiff after processing:', timeDiff);
+                  console.log('=== END SAGA FEED PROCESSING ===');
                   
                   // Format time difference with same logic as Tellor feeds
                   const timeDiffFormatted = timeDiff < 60 
@@ -264,6 +327,16 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       return prevData; // Don't add data for wrong feed
                     }
                     
+                    // Additional safety check: ensure we don't add duplicate transactions
+                    const isDuplicate = prevData.some(existing => 
+                      existing.txHash === newTransaction.txHash || 
+                      (existing.pair === newTransaction.pair && existing._rawTimestamp === newTransaction._rawTimestamp)
+                    );
+                    
+                    if (isDuplicate) {
+                      return prevData; // Don't add duplicate
+                    }
+                    
                     const updatedData = [...prevData, newTransaction];
                     // Sort by timestamp descending (newest first)
                     const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
@@ -276,9 +349,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   
                   // Force React to re-render immediately by updating render key
                   setRenderKey(prev => prev + 1);
-                  
-                  // Additional force update to ensure re-render
-                  setCurrentValue(currentValue => [...currentValue]);
                   
                   // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
                   await new Promise(resolve => setTimeout(resolve, 0));
@@ -332,7 +402,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             
             // Subtract block time if toggle is enabled
           if (includeBlockTime && avgBlockTime > 0) {
+            console.log('Tellor: Applying block time adjustment:', timeDiff, '-', avgBlockTime, '=', Math.max(0, timeDiff - avgBlockTime));
             timeDiff = Math.max(0, timeDiff - avgBlockTime);
+            } else if (includeBlockTime && avgBlockTime === 0) {
+              console.log('Tellor: Block time toggle enabled but avgBlockTime is 0');
             }
             
             const timeDiffFormatted = timeDiff < 60 
@@ -392,10 +465,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   }, [includeBlockTime, avgBlockTime]);
 
   // Function to fetch only new transactions (for incremental updates)
-  const fetchNewTransactionsOnly = useCallback(async (contract, queryId, startIndex, endIndex, token = 0) => {
+  const fetchNewTransactionsOnly = useCallback(async (contract, queryId, startIndex, endIndex, token = 0, blockTimeOverride = null) => {
+    console.log('🔄 fetchNewTransactionsOnly called with:', { queryId, startIndex, endIndex, blockTimeOverride, includeBlockTime, avgBlockTime });
     try {
       // Validate that we're still processing the correct feed
       if (currentFeed !== selectedDataBankFeed) {
+        console.log('❌ Feed changed during processing, returning empty array');
         return [];
       }
       
@@ -471,9 +546,27 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               : 0;
             
             // Subtract block time if toggle is enabled (same logic as Tellor feeds)
-            if (includeBlockTime && avgBlockTime > 0) {
-              timeDiff = Math.max(0, timeDiff - avgBlockTime);
+            const effectiveBlockTime = blockTimeOverride !== null ? blockTimeOverride : avgBlockTime;
+            console.log('=== SAGA FEED INCREMENTAL PROCESSING ===');
+            console.log('includeBlockTime:', includeBlockTime);
+            console.log('effectiveBlockTime:', effectiveBlockTime);
+            console.log('avgBlockTime:', avgBlockTime);
+            console.log('blockTimeOverride:', blockTimeOverride);
+            console.log('Original timeDiff:', timeDiff);
+            
+            if (includeBlockTime && effectiveBlockTime > 0) {
+              const adjustedTimeDiff = Math.max(0, timeDiff - effectiveBlockTime);
+              console.log('✅ APPLYING BLOCK TIME (incremental):', timeDiff, '-', effectiveBlockTime, '=', adjustedTimeDiff);
+              timeDiff = adjustedTimeDiff;
+            } else if (includeBlockTime && effectiveBlockTime === 0) {
+              console.log('❌ Block time toggle enabled but effectiveBlockTime is 0 (incremental)');
+            } else if (!includeBlockTime) {
+              console.log('❌ Block time toggle is OFF (incremental)');
+            } else {
+              console.log('❌ Unknown condition (incremental) - includeBlockTime:', includeBlockTime, 'effectiveBlockTime:', effectiveBlockTime);
             }
+            console.log('Final timeDiff after processing (incremental):', timeDiff);
+            console.log('=== END SAGA FEED INCREMENTAL PROCESSING ===');
             
             // Get real block number from current blockchain state
             let realBlockNumber = "Fetching...";
@@ -534,26 +627,80 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   }, [selectedDataBankFeed, includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
 
   // Function to calculate average block time
-  const calculateAverageBlockTime = async (provider) => {
+  const calculateAverageBlockTime = async (provider, contractAddress) => {
     try {
+      console.log('Calculating block time for contract:', contractAddress);
+      
       // Get current block
       const endBlock = await provider.getBlock('latest');
+      console.log('Latest block:', endBlock.number, 'at timestamp:', endBlock.timestamp);
       
-      // Get block from 100,000 blocks ago
-      const startBlockNumber = Math.max(0, endBlock.number - 100000);
+      // Use different block ranges for different chains based on RPC capabilities
+      const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
+      let blockRange, startBlockNumber;
+      
+      if (isSagaChain) {
+        // For Saga, start with a much smaller range that the RPC can likely access
+        blockRange = 1000;
+        startBlockNumber = Math.max(0, endBlock.number - blockRange);
+        console.log('Saga chain detected - using conservative range of', blockRange, 'blocks');
+      } else {
+        // For Sepolia, use the full 100,000 block range
+        blockRange = 100000;
+        startBlockNumber = Math.max(0, endBlock.number - blockRange);
+        console.log('Sepolia chain detected - using full range of', blockRange, 'blocks');
+      }
+      
+      console.log('Requesting start block:', startBlockNumber, 'for range of', blockRange, 'blocks');
+      console.log('Current block number:', endBlock.number, 'Current block timestamp:', endBlock.timestamp);
+      
       const startBlock = await provider.getBlock(startBlockNumber);
+      console.log('Start block result:', startBlock ? `Block ${startBlock.number} at ${startBlock.timestamp}` : 'null');
+      
+      if (!startBlock) {
+        console.log('Start block not found, trying with even smaller range');
+        // Try with a much smaller range that should definitely work
+        const fallbackRange = isSagaChain ? 100 : 1000;
+        const fallbackStartBlockNumber = Math.max(0, endBlock.number - fallbackRange);
+        console.log('Trying fallback range:', fallbackRange, 'blocks, start block:', fallbackStartBlockNumber);
+        
+        const fallbackStartBlock = await provider.getBlock(fallbackStartBlockNumber);
+        if (!fallbackStartBlock) {
+          console.log('Fallback also failed, using default block time');
+          const defaultBlockTime = isSagaChain ? 2 : 12;
+          console.log('Using default block time for', isSagaChain ? 'Saga' : 'Sepolia', ':', defaultBlockTime, 'seconds');
+          setAvgBlockTime(defaultBlockTime);
+          return defaultBlockTime;
+        }
+        
+        const timeDifference = endBlock.timestamp - fallbackStartBlock.timestamp;
+        const blockCount = endBlock.number - fallbackStartBlockNumber;
+        const averageBlockTime = blockCount > 0 ? timeDifference / blockCount : (isSagaChain ? 2 : 12);
+        
+        console.log('Calculated average block time (fallback):', averageBlockTime, 'seconds');
+        setAvgBlockTime(averageBlockTime);
+        return averageBlockTime;
+      }
+      
+      console.log('Start block:', startBlock.number, 'at timestamp:', startBlock.timestamp);
       
       // Calculate average block time
       const timeDifference = endBlock.timestamp - startBlock.timestamp;
       const blockCount = endBlock.number - startBlockNumber;
       const averageBlockTime = blockCount > 0 ? timeDifference / blockCount : 0;
       
-      setAvgBlockTime(averageBlockTime);
-      
-      return averageBlockTime;
+        console.log('Calculated average block time:', averageBlockTime, 'seconds');
+        console.log('Time difference:', timeDifference, 'seconds, Block count:', blockCount, 'blocks');
+        setAvgBlockTime(averageBlockTime);
+        
+        return averageBlockTime;
     } catch (error) {
-      setAvgBlockTime(0);
-      return 0;
+      console.error('Error calculating block time:', error);
+      const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
+      const defaultBlockTime = isSagaChain ? 2 : 12;
+      console.log('Using default block time due to error:', defaultBlockTime, 'seconds');
+      setAvgBlockTime(defaultBlockTime);
+      return defaultBlockTime;
     }
   };
 
@@ -591,7 +738,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         
         // Calculate average block time if toggle is enabled
         if (includeBlockTime) {
-          await calculateAverageBlockTime(provider);
+          await calculateAverageBlockTime(provider, contractAddress);
         }
         
         let processedData;
@@ -674,11 +821,29 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         setInitialFetchComplete(false);
         
         // Calculate average block time if toggle is enabled (same as Tellor feeds)
+        let currentBlockTime = avgBlockTime;
+        console.log('Saga feed selected - includeBlockTime:', includeBlockTime, 'current avgBlockTime:', avgBlockTime);
+        
         if (includeBlockTime) {
-          await calculateAverageBlockTime(provider);
+          console.log('Calculating block time for saga feed before data fetch');
+          const blockTime = await calculateAverageBlockTime(provider, contractAddress);
+          console.log('Block time calculated for saga feed:', blockTime);
+          // Update state and also use the value directly
+          setAvgBlockTime(blockTime);
+          currentBlockTime = blockTime;
+          console.log('Updated currentBlockTime to:', currentBlockTime);
+        } else {
+          console.log('Block time toggle is OFF, using existing avgBlockTime:', avgBlockTime);
         }
         
-        const data = await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken);
+        console.log('Calling fetchDataBankData with currentBlockTime:', currentBlockTime);
+        console.log('=== SAGA FEED INITIAL DATA FETCH ===');
+        console.log('includeBlockTime:', includeBlockTime);
+        console.log('currentBlockTime:', currentBlockTime);
+        console.log('avgBlockTime:', avgBlockTime);
+        console.log('=== END SAGA FEED INITIAL DATA FETCH ===');
+        
+        const data = await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken, currentBlockTime);
         
         setLoading(false);
         setFeedLoading(false);
@@ -692,13 +857,16 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         
         // Set up periodic refresh every 30 seconds for real-time updates
         const refreshInterval = setInterval(async () => {
+          console.log('🔄 Periodic refresh triggered for feed:', selectedDataBankFeed);
           // Don't run auto-refresh until initial fetch is complete
           if (!initialFetchComplete) {
+            console.log('❌ Initial fetch not complete, skipping refresh');
             return;
           }
           
           // Validate that we're still processing the correct feed
           if (currentFeed !== selectedDataBankFeed) {
+            console.log('❌ Feed changed during refresh, skipping');
             return;
           }
           
@@ -724,12 +892,23 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               const newTransactionCount = currentCountNum - localTransactionCount;
               
               // Recalculate block time if toggle is enabled (same as Tellor feeds)
+              let currentRefreshBlockTime = avgBlockTime;
+              console.log('=== SAGA FEED INCREMENTAL REFRESH ===');
+              console.log('includeBlockTime:', includeBlockTime);
+              console.log('avgBlockTime:', avgBlockTime);
+              
               if (includeBlockTime) {
-                await calculateAverageBlockTime(provider);
+                const blockTime = await calculateAverageBlockTime(provider, contractAddress);
+                currentRefreshBlockTime = blockTime;
+                console.log('Recalculated block time for refresh:', currentRefreshBlockTime);
+              } else {
+                console.log('Block time toggle OFF, using existing avgBlockTime:', currentRefreshBlockTime);
               }
               
+              console.log('=== END SAGA FEED INCREMENTAL REFRESH ===');
+              
               // Fetch only the new transactions (from local count to current count-1)
-              const newTransactions = await fetchNewTransactionsOnly(contract, queryId, localTransactionCount, currentCountNum, cancellationToken);
+              const newTransactions = await fetchNewTransactionsOnly(contract, queryId, localTransactionCount, currentCountNum, cancellationToken, currentRefreshBlockTime);
               
               if (newTransactions && newTransactions.length > 0) {
                 // Validate that we're still processing the correct feed before updating
@@ -752,7 +931,19 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     return prevData; // No valid transactions to add
                   }
                   
-                  const combinedData = [...prevData, ...filteredNewTransactions];
+                  // Remove duplicates before combining
+                  const uniqueNewTransactions = filteredNewTransactions.filter(newTx => 
+                    !prevData.some(existing => 
+                      existing.txHash === newTx.txHash || 
+                      (existing.pair === newTx.pair && existing._rawTimestamp === newTx._rawTimestamp)
+                    )
+                  );
+                  
+                  if (uniqueNewTransactions.length === 0) {
+                    return prevData; // No unique transactions to add
+                  }
+                  
+                  const combinedData = [...prevData, ...uniqueNewTransactions];
                   // Sort by timestamp in descending order (newest first)
                   const sortedData = combinedData.sort((a, b) => {
                     const timeA = new Date(a.timestamp).getTime();
@@ -797,6 +988,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Effect to immediately clear data when feed changes
   useEffect(() => {
+    console.log('Feed changed to:', selectedDataBankFeed);
     // Clear data immediately when feed changes
     if (selectedDataBankFeed) {
       // Force clear all data immediately
@@ -807,6 +999,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       setCurrentFeed(selectedDataBankFeed);
       currentFeedRef.current = selectedDataBankFeed; // Update ref immediately
       setPage(1); // Reset to first page
+      
+      // Clear block time state when switching feeds to prevent data corruption
+      setAvgBlockTime(0);
       
       // Force a re-render to ensure UI updates
       setForceUpdate(prev => prev + 1);
@@ -821,11 +1016,158 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       currentFeedRef.current = null; // Update ref immediately
       setPage(1); // Reset to first page
       
+      // Clear block time state when switching feeds to prevent data corruption
+      setAvgBlockTime(0);
+      
       // Force a re-render to ensure UI updates
       setForceUpdate(prev => prev + 1);
       setRenderKey(prev => prev + 1);
     }
   }, [selectedDataBankFeed]);
+
+  // Effect to recalculate block time when toggle changes or feed changes
+  useEffect(() => {
+    console.log('Block time effect triggered - includeBlockTime:', includeBlockTime, 'contractAddress:', contractAddress, 'selectedDataBankFeed:', selectedDataBankFeed);
+    const recalculateBlockTime = async () => {
+      if (includeBlockTime) {
+        try {
+          let rpcUrl;
+          if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+            rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+          } else {
+            rpcUrl = "https://eth-sepolia.g.alchemy.com/v2/c9C61uwd-LHombk09TFBRF-NGhNI75JX";
+          }
+          
+          console.log('Recalculating block time for:', contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() ? 'Saga' : 'Sepolia');
+          const provider = new ethers.JsonRpcProvider(rpcUrl);
+          const newBlockTime = await calculateAverageBlockTime(provider, contractAddress);
+          console.log('New block time calculated:', newBlockTime);
+          
+          // If this is a saga feed and we're enabling block time, we need to refresh the data
+          if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() && selectedDataBankFeed && includeBlockTime) {
+            console.log('🔄 Block time enabled for saga feed - triggering data refresh');
+            // Force a data refresh by clearing the initial fetch flag
+            setInitialFetchComplete(false);
+            // This will trigger the saga feed useEffect to re-fetch data with the new block time
+          }
+        } catch (error) {
+          console.error('Failed to recalculate block time:', error);
+        }
+      } else {
+        setAvgBlockTime(0);
+      }
+    };
+
+    recalculateBlockTime();
+  }, [includeBlockTime, contractAddress, selectedDataBankFeed]);
+
+  // Effect to clear block time when switching feeds to force recalculation
+  useEffect(() => {
+    if (selectedDataBankFeed) {
+      console.log('Clearing block time for new feed:', selectedDataBankFeed);
+      // Reset block time toggle when switching feeds to prevent data corruption
+      setIncludeBlockTime(false);
+      setAvgBlockTime(0);
+      console.log('🔄 Reset block time toggle for new feed');
+    }
+  }, [selectedDataBankFeed]);
+
+  // Effect to reprocess existing data when block time settings change
+  useEffect(() => {
+    if (!selectedDataBankFeed || !currentValue.length) return;
+    
+    console.log('🔄 Block time settings changed - reprocessing existing data');
+    console.log('includeBlockTime:', includeBlockTime, 'avgBlockTime:', avgBlockTime);
+    console.log('Current data length:', currentValue.length);
+    console.log('Sample data item:', currentValue[0]);
+    
+    // Safety check: ensure we're processing data for the current feed
+    if (currentValue[0] && currentValue[0].pair && currentValue[0].pair !== selectedDataBankFeed) {
+      console.log('❌ Data mismatch - current data is for feed:', currentValue[0].pair, 'but selected feed is:', selectedDataBankFeed);
+      console.log('❌ Skipping reprocessing to prevent data corruption');
+      return;
+    }
+    
+    // Don't reprocess if block time toggle is enabled but we don't have the calculated value yet
+    if (includeBlockTime && avgBlockTime === 0) {
+      console.log('⏳ Block time toggle enabled but avgBlockTime not calculated yet - waiting...');
+      return;
+    }
+    
+    // Reprocess the existing data with current block time settings
+    const reprocessedData = currentValue.map(item => {
+      console.log('Processing item:', item);
+      
+      // Check for both timeDiff (numeric) and timeDifference (string) properties
+      const hasTimeDiff = item.timeDiff !== undefined;
+      const hasTimeDifference = item.timeDifference !== undefined;
+      
+      console.log('Item has timeDiff:', hasTimeDiff, 'Item has timeDifference:', hasTimeDifference);
+      
+      if (hasTimeDiff) {
+        // Handle numeric timeDiff (like Tellor feeds)
+        const originalTimeDiff = item._originalTimeDiff || item.timeDiff;
+        console.log('Original timeDiff (numeric):', originalTimeDiff);
+        
+        // Store original value if not already stored
+        if (!item._originalTimeDiff) {
+          item._originalTimeDiff = originalTimeDiff;
+          console.log('Stored original timeDiff:', originalTimeDiff);
+        }
+        
+        // Apply block time adjustment if enabled
+        if (includeBlockTime && avgBlockTime > 0) {
+          const adjustedTimeDiff = Math.max(0, originalTimeDiff - avgBlockTime);
+          console.log('✅ Reprocessing: Original delay:', originalTimeDiff, '- Block time:', avgBlockTime, '= Adjusted delay:', adjustedTimeDiff);
+          return { ...item, timeDiff: adjustedTimeDiff };
+        } else {
+          // Restore original value if block time is disabled
+          console.log('🔄 Restoring original delay:', originalTimeDiff);
+          return { ...item, timeDiff: originalTimeDiff };
+        }
+      } else if (hasTimeDifference) {
+        // Handle string timeDifference (like Saga feeds)
+        const originalTimeDifference = item._originalTimeDifference || item.timeDifference;
+        console.log('Original timeDifference (string):', originalTimeDifference);
+        
+        // Store original value if not already stored
+        if (!item._originalTimeDifference) {
+          item._originalTimeDifference = originalTimeDifference;
+          console.log('Stored original timeDifference:', originalTimeDifference);
+        }
+        
+        // Apply block time adjustment if enabled
+        if (includeBlockTime && avgBlockTime > 0) {
+          // Convert string time to numeric seconds for calculation
+          const timeInSeconds = parseTimeString(originalTimeDifference);
+          console.log('Converted timeDifference to seconds:', timeInSeconds);
+          
+          if (timeInSeconds !== null) {
+            const adjustedTimeInSeconds = Math.max(0, timeInSeconds - avgBlockTime);
+            const adjustedTimeDifference = formatTimeString(adjustedTimeInSeconds);
+            console.log('✅ Reprocessing: Original delay:', originalTimeDifference, '(', timeInSeconds, 's) - Block time:', avgBlockTime, '= Adjusted delay:', adjustedTimeDifference, '(', adjustedTimeInSeconds, 's)');
+            return { ...item, timeDifference: adjustedTimeDifference };
+          } else {
+            console.log('❌ Could not parse timeDifference:', originalTimeDifference);
+            return item;
+          }
+        } else {
+          // Restore original value if block time is disabled
+          console.log('🔄 Restoring original delay:', originalTimeDifference);
+          return { ...item, timeDifference: originalTimeDifference };
+        }
+      } else {
+        console.log('❌ Item does not have timeDiff or timeDifference property');
+      }
+      return item;
+    });
+    
+    // Update the data with reprocessed values
+    setCurrentValue(reprocessedData);
+    currentValueRef.current = reprocessedData;
+    
+    console.log('🔄 Data reprocessing complete');
+  }, [includeBlockTime, avgBlockTime, selectedDataBankFeed, currentValue.length]);
 
   // Cleanup effect to clear all data when switching contract types
   useEffect(() => {
@@ -1003,7 +1345,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         control={
           <Switch
             checked={includeBlockTime}
-            onChange={(e) => setIncludeBlockTime(e.target.checked)}
+            onChange={(e) => {
+              console.log('Block time toggle changed to:', e.target.checked);
+              console.log('Current avgBlockTime:', avgBlockTime);
+              setIncludeBlockTime(e.target.checked);
+            }}
             sx={{
               '& .MuiSwitch-switchBase.Mui-checked': {
                 color: '#00b96f',
@@ -1019,10 +1365,15 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         }
         label={
           <Typography variant="body2" sx={{ color: '#0E5353', fontSize: '0.875rem' }}>
-            Remove EVM Block Time
+            Remove {contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() ? 'SagaEVM' : 'EVM'} Block Time
             {includeBlockTime && avgBlockTime > 0 && (
               <span style={{ marginLeft: '8px', opacity: 0.7 }}>
                 ({avgBlockTime.toFixed(1)}s avg)
+              </span>
+            )}
+            {includeBlockTime && avgBlockTime === 0 && (
+              <span style={{ marginLeft: '8px', opacity: 0.7, color: '#ff6b6b' }}>
+                (Calculating...)
               </span>
             )}
           </Typography>
@@ -1439,7 +1790,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               {/* Ethereum Feeds */}
               <div>
                 <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
-                  Ethereum Feeds:
+                  Sepolia Feeds:
                   {feedLoading && !isDataBankContract && (
                     <span style={{ 
                       marginLeft: '8px', 
