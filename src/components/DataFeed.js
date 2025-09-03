@@ -320,22 +320,34 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   
                   // CRITICAL: Update the UI immediately with each new transaction
                   setCurrentValue(prevData => {
+                    // CRITICAL: Validate we're still processing the correct feed
+                    if (currentFeed !== targetFeed || currentFeedRef.current !== targetFeed) {
+                      console.log('Feed mismatch detected, skipping transaction:', { currentFeed, targetFeed, currentFeedRef: currentFeedRef.current });
+                      return prevData; // Feed changed, don't add this data
+                    }
+                    
                     // For DataBank contracts, only add data if it's for the current feed
                     if (isDataBankContract && currentFeedRef.current && newTransaction.pair && newTransaction.pair !== currentFeedRef.current) {
+                      console.log('Wrong feed data, skipping:', { transactionPair: newTransaction.pair, currentFeed: currentFeedRef.current });
                       return prevData; // Don't add data for wrong feed
                     }
                     
+                    // CRITICAL: Remove any existing data from different feeds before adding new data
+                    const cleanedPrevData = isDataBankContract && currentFeedRef.current 
+                      ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
+                      : prevData;
+                    
                     // Additional safety check: ensure we don't add duplicate transactions
-                    const isDuplicate = prevData.some(existing => 
+                    const isDuplicate = cleanedPrevData.some(existing => 
                       existing.txHash === newTransaction.txHash || 
                       (existing.pair === newTransaction.pair && existing._rawTimestamp === newTransaction._rawTimestamp)
                     );
                     
                     if (isDuplicate) {
-                      return prevData; // Don't add duplicate
+                      return cleanedPrevData; // Don't add duplicate
                     }
                     
-                    const updatedData = [...prevData, newTransaction];
+                    const updatedData = [...cleanedPrevData, newTransaction];
                     // Sort by timestamp descending (newest first)
                     const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
                     // Update ref for immediate access
@@ -698,16 +710,13 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   useEffect(() => {
     // Skip main data fetching if a specific DataBank feed is selected
     if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      console.log('Skipping main fetch: DataBank feed selected');
       return;
     }
     
-    // Also skip if we're in the middle of switching to DataBank
-    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() && feedLoading) {
-      return;
-    }
-    
-    // Also skip if we're processing a specific feed
-    if (currentFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+    // Skip if we're switching to DataBank contract but don't have feed yet
+    if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      console.log('Skipping main fetch: DataBank contract without selected feed');
       return;
     }
     
@@ -748,12 +757,21 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         }
         
         if (processedData && processedData.length > 0) {
-          setCurrentValue(processedData);
-          currentValueRef.current = processedData;
-          setInitialFetchComplete(true); // Mark initial fetch as complete
+          // CRITICAL: Only set data if we're still on the right contract type
+          if (!selectedDataBankFeed && contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+            console.log('Setting Tellor data:', processedData.length, 'transactions');
+            setCurrentValue(processedData);
+            currentValueRef.current = processedData;
+            setInitialFetchComplete(true); // Mark initial fetch as complete
+          } else {
+            console.log('Contract type changed during fetch, discarding Tellor data');
+            setCurrentValue([]);
+            currentValueRef.current = [];
+          }
         } else {
           // Don't throw error, just set empty array
           setCurrentValue([]);
+          currentValueRef.current = [];
         }
 
         setLoading(false);
@@ -895,6 +913,17 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 
                 // Append new transactions to existing data and sort by timestamp (newest first)
                 setCurrentValue(prevData => {
+                  // CRITICAL: Validate we're still on the correct feed
+                  if (currentFeed !== selectedDataBankFeed || currentFeedRef.current !== selectedDataBankFeed) {
+                    console.log('Auto-refresh feed mismatch, skipping update:', { currentFeed, selectedDataBankFeed, currentFeedRef: currentFeedRef.current });
+                    return prevData;
+                  }
+                  
+                  // CRITICAL: Clean existing data to remove any cross-feed contamination
+                  const cleanedPrevData = isDataBankContract && currentFeedRef.current 
+                    ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
+                    : prevData;
+                  
                   // For DataBank contracts, filter to only include data for current feed
                   let filteredNewTransactions;
                   if (isDataBankContract && currentFeedRef.current) {
@@ -905,22 +934,22 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   }
                   
                   if (filteredNewTransactions.length === 0) {
-                    return prevData; // No valid transactions to add
+                    return cleanedPrevData; // No valid transactions to add
                   }
                   
                   // Remove duplicates before combining
                   const uniqueNewTransactions = filteredNewTransactions.filter(newTx => 
-                    !prevData.some(existing => 
+                    !cleanedPrevData.some(existing => 
                       existing.txHash === newTx.txHash || 
                       (existing.pair === newTx.pair && existing._rawTimestamp === newTx._rawTimestamp)
                     )
                   );
                   
                   if (uniqueNewTransactions.length === 0) {
-                    return prevData; // No unique transactions to add
+                    return cleanedPrevData; // No unique transactions to add
                   }
                   
-                  const combinedData = [...prevData, ...uniqueNewTransactions];
+                  const combinedData = [...cleanedPrevData, ...uniqueNewTransactions];
                   // Sort by timestamp in descending order (newest first)
                   const sortedData = combinedData.sort((a, b) => {
                     const timeA = new Date(a.timestamp).getTime();
@@ -965,41 +994,31 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Effect to immediately clear data when feed changes
   useEffect(() => {
-
-    // Clear data immediately when feed changes
+    console.log('Feed change effect triggered:', { selectedDataBankFeed, currentFeed });
+    
+    // CRITICAL: Always clear data immediately when feed changes, regardless of feed type
+    setCurrentValue([]);
+    currentValueRef.current = [];
+    setInitialFetchComplete(false);
+    setIsIncrementalLoading(false);
+    setPage(1); // Reset to first page
+    
+    // Clear block time state when switching feeds to prevent data corruption
+    setAvgBlockTime(0);
+    
     if (selectedDataBankFeed) {
-      // Force clear all data immediately
-      setCurrentValue([]);
-      currentValueRef.current = [];
-      setInitialFetchComplete(false);
-      setIsIncrementalLoading(false);
+      // Setting up for DataBank feed
       setCurrentFeed(selectedDataBankFeed);
       currentFeedRef.current = selectedDataBankFeed; // Update ref immediately
-      setPage(1); // Reset to first page
-      
-      // Clear block time state when switching feeds to prevent data corruption
-      setAvgBlockTime(0);
-      
-      // Force a re-render to ensure UI updates
-      setForceUpdate(prev => prev + 1);
-      setRenderKey(prev => prev + 1);
     } else {
-      // If no feed selected, clear everything
-      setCurrentValue([]);
-      currentValueRef.current = [];
-      setInitialFetchComplete(false);
-      setIsIncrementalLoading(false);
+      // Clearing feed selection (going to Tellor or no feed)
       setCurrentFeed(null);
       currentFeedRef.current = null; // Update ref immediately
-      setPage(1); // Reset to first page
-      
-      // Clear block time state when switching feeds to prevent data corruption
-      setAvgBlockTime(0);
-      
-      // Force a re-render to ensure UI updates
-      setForceUpdate(prev => prev + 1);
-      setRenderKey(prev => prev + 1);
     }
+    
+    // Force a re-render to ensure UI updates
+    setForceUpdate(prev => prev + 1);
+    setRenderKey(prev => prev + 1);
   }, [selectedDataBankFeed]);
 
   // Effect to recalculate block time when toggle changes or feed changes
@@ -1176,44 +1195,32 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Cleanup effect to clear all data when switching contract types
   useEffect(() => {
-    // Clear data when switching between DataBank and Tellor contracts
+    console.log('Contract address change effect:', { contractAddress, selectedDataBankFeed, isDataBankContract });
+    
+    // CRITICAL: Always clear data completely when switching contract types
+    setCurrentValue([]);
+    currentValueRef.current = [];
+    setInitialFetchComplete(false);
+    setIsIncrementalLoading(false);
+    setPage(1); // Reset to first page
+    
+    // Clear feed references based on contract type
     if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+      // Switching to DataBank contract
       if (!selectedDataBankFeed) {
-        // If switching to DataBank but no feed selected, clear data
-        // Cancel any ongoing operations
-        setCancellationToken(prev => prev + 1);
-        // Clear refs first
-        currentValueRef.current = [];
-        currentFeedRef.current = null;
-        // Then clear state
-        setCurrentValue([]);
-        setFeedLoading(false);
-        setInitialFetchComplete(false);
         setCurrentFeed(null);
-        setIsIncrementalLoading(false);
-        setPage(1); // Reset to first page
-        setForceUpdate(prev => prev + 1); // Force re-render
-        setRenderKey(prev => prev + 1);
+        currentFeedRef.current = null;
       }
     } else {
-      // If switching to Tellor, clear any DataBank feed data but allow Tellor data
-      // Cancel any ongoing operations
-      setCancellationToken(prev => prev + 1);
-      // Clear refs first
-      currentValueRef.current = [];
-      currentFeedRef.current = null; // Clear feed ref to allow all data
-      // Then clear state
-      setSelectedDataBankFeed(null);
-      setFeedLoading(false);
-      setCurrentValue([]); // Clear DataBank data when switching to Tellor
-      setInitialFetchComplete(false);
+      // Switching to Tellor contract - clear DataBank-specific state
       setCurrentFeed(null);
-      setIsIncrementalLoading(false);
-      setPage(1); // Reset to first page
-      setForceUpdate(prev => prev + 1); // Force re-render
-      setRenderKey(prev => prev + 1);
+      currentFeedRef.current = null;
     }
-  }, [contractAddress, selectedDataBankFeed]);
+    
+    // Force re-render
+    setForceUpdate(prev => prev + 1);
+    setRenderKey(prev => prev + 1);
+  }, [contractAddress]);
 
   // Cleanup effect for component unmount and major state changes
   useEffect(() => {
@@ -1825,36 +1832,38 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     onClick={() => {
                       if (feedLoading) return; // Prevent clicks during loading
                       
+                      console.log('Sepolia ETH/USD button clicked');
                       setFeedLoading(true); // Start loading immediately
                       
-                      // IMMEDIATELY clear all data and cancel operations - SYNCHRONOUS UPDATES
-                      setCancellationToken(prev => prev + 1); // Cancel ongoing operations
-                      // Synchronously clear refs first to prevent any stale data display
-                      currentValueRef.current = [];
-                      currentFeedRef.current = null; // Clear feed ref immediately
-                      // Then clear state
-                      setCurrentValue([]);
-                      setCurrentFeed(null);
-                      setInitialFetchComplete(false);
-                      setIsIncrementalLoading(false);
-                      setPage(1); // Reset to first page
-                      setForceUpdate(prev => prev + 1); // Force immediate re-render
-                      setRenderKey(prev => prev + 1); // Force immediate re-render
-                      
-                      // Then update contract states
+                      // Clear DataBank feed selection immediately
                       setSelectedDataBankFeed(null);
+                      
+                      // Set contract states
                       setIsDataBankContract(false);
                       setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
                       setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                      
+                      // Clear current data immediately to show loading state
+                      setCurrentValue([]);
+                      currentValueRef.current = [];
+                      setCurrentFeed(null);
+                      currentFeedRef.current = null;
+                      setInitialFetchComplete(false);
+                      setIsIncrementalLoading(false);
+                      setPage(1);
+                      
+                      // Force re-render
+                      setForceUpdate(prev => prev + 1);
+                      setRenderKey(prev => prev + 1);
                     }}
                     disabled={feedLoading}
                   style={{
                       minWidth: '150px',
                     padding: '8px 16px',
                       textTransform: 'none',
-                      fontWeight: !isDataBankContract ? 'bold' : 'normal',
-                      backgroundColor: !isDataBankContract ? '#0E5353' : 'transparent',
-                      color: !isDataBankContract ? 'white' : '#0E5353',
+                      fontWeight: (!isDataBankContract && !selectedDataBankFeed) ? 'bold' : 'normal',
+                      backgroundColor: (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent',
+                      color: (!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353',
                       border: `2px solid #0E5353`,
                     borderRadius: '4px',
                     cursor: feedLoading ? 'not-allowed' : 'pointer',
@@ -1864,16 +1873,16 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     }}
                     onMouseEnter={(e) => {
                       if (!feedLoading) {
-                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!feedLoading) {
-                        e.target.style.backgroundColor = !isDataBankContract ? '#0E5353' : 'transparent';
+                        e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent';
                       }
                     }}
                   >
-                    {feedLoading && !isDataBankContract ? (
+                    {feedLoading && !selectedDataBankFeed ? (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                         <CircularProgress size={12} style={{ color: 'white' }} />
                         <span>Loading...</span>
@@ -2060,20 +2069,16 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     // Show data when available - FILTER appropriately based on contract type
                     currentValue
                       .filter(data => {
-                        // For DataBank contracts, only show current feed data
-                        if (isDataBankContract) {
-                          // If we have a current feed ref and the data has a pair, filter by it
-                          if (currentFeedRef.current && data.pair) {
-                            return data.pair === currentFeedRef.current;
-                          }
-                          // If no current feed ref but we're on DataBank, show nothing (switching state)
-                          if (!currentFeedRef.current) {
-                            return false;
-                          }
+                        // CRITICAL: For DataBank contracts, only show current feed data
+                        if (isDataBankContract && selectedDataBankFeed && data.pair) {
+                          return data.pair === selectedDataBankFeed;
                         }
-                        // For Tellor contracts, show all data (no filtering)
-                        // Also show data that doesn't have a pair property (legacy Tellor data)
-                        return !isDataBankContract || !data.pair;
+                        // CRITICAL: For Tellor contracts, exclude any data with pair property (DataBank data)
+                        if (!isDataBankContract && !selectedDataBankFeed) {
+                          return !data.pair; // Only show data without pair property (Tellor data)
+                        }
+                        // Fallback: don't show data if we're in an inconsistent state
+                        return false;
                       })
                       .slice((page - 1) * rowsPerPage, page * rowsPerPage)
                       .map((data, index) => (
