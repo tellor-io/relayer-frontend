@@ -26,6 +26,7 @@ import {
 import { Line } from 'react-chartjs-2';
 import TellorABI from '../contracts/TellorABI.json';
 import DataBankABI from '../contracts/DataBank.json';
+import '../styles/DataFeed.css';
 
 // Register ChartJS components
 ChartJS.register(
@@ -49,7 +50,15 @@ const DATABANK_PRICE_PAIRS = {
   'SAGA/USD': '0x74c9cfdfd2e4a00a9437bf93bf6051e18e604a976f3fa37faafe0bb5a039431d',
   'USDC/USD': '0x8ee44cd434ed5b0e007eee581fbe0855336f3f84484e8d9989a620a4a49aa0f7',
   'USDT/USD': '0x68a37787e65e85768d4aa6e385fb15760d46df0f67a18ec032d8fd5848aca264',
-  'FBTC/USD': '0xc444759b83c7bb0f6694306e1f719e65679d48ad754a31d3a366856becf1e71e'
+  'FBTC/USD': '0xc444759b83c7bb0f6694306e1f719e65679d48ad754a31d3a366856becf1e71e',
+  'USDN/USD': '0xe010d752f28dcd2804004d0b57ab1bdc4eca092895d49160204120af11d15f3e',
+  'sUSDS/USD': '0x59ae85cec665c779f18255dd4f3d97821e6a122691ee070b9a26888bc2a0e45a',
+  'yUSD/USD': '0x35155b44678db9e9e021c2cf49dd20c31b49e03415325c2beffb5221cf63882d',
+  'tBTC/USD': '0x76b504e33305a63a3b80686c0b7bb99e7697466927ba78e224728e80bfaaa0be',
+  'rETH/USD': '0x0bc2d41117ae8779da7623ee76a109c88b84b9bf4d9b404524df04f7d0ca4ca7',
+  'wstETH/USD': '0x1962cde2f19178fe2bb2229e78a6d386e6406979edc7b9a1966d89d83b3ebf2e',
+  'KING/USD': '0xd62f132d9d04dde6e223d4366c48b47cd9f90228acdc6fa755dab93266db5176',
+  'sUSDe/USD': '0x03731257e35c49e44b267640126358e5decebdd8f18b5e8f229542ec86e318cf'
 };
 
 const DataFeed = () => {
@@ -1253,25 +1262,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   };
 
   const TimeScaleToggle = () => (
-    <div style={{ 
-      marginBottom: '1rem', 
-      display: 'flex', 
-      gap: '8px',
-      justifyContent: 'center' 
-    }}>
+    <div className="time-scale-toggle">
       {['recent', 'daily', 'weekly', 'custom'].map((scale) => (
         <button
           key={scale}
           onClick={() => setTimeScale(scale)}
-          style={{
-            padding: '4px 12px',
-            backgroundColor: timeScale === scale ? '#0E5353' : 'transparent',
-            color: timeScale === scale ? 'white' : '#0E5353',
-            border: '1px solid #0E5353',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            textTransform: 'capitalize'
-          }}
+          className={`time-scale-button ${timeScale === scale ? 'active' : ''}`}
         >
           {scale === 'custom' ? 'Date Range' : scale}
         </button>
@@ -1280,13 +1276,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   );
 
   const CustomDateRangeInputs = () => (
-    <div style={{ 
-      marginBottom: '0.5rem', 
-      display: 'flex', 
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: '12px'
-    }}>
+    <div className="custom-date-inputs">
       <TextField
         label="Start Date"
         type="datetime-local"
@@ -1359,13 +1349,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   );
 
   const BlockTimeToggle = () => (
-    <div style={{ 
-      marginBottom: '1rem', 
-      display: 'flex', 
-      justifyContent: 'center',
-      alignItems: 'center',
-      gap: '8px'
-    }}>
+    <div className="block-time-toggle">
       <FormControlLabel
         control={
           <Switch
@@ -1698,6 +1682,272 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     };
   };
 
+  const preparePriceChartData = (data) => {
+    if (!Array.isArray(data) || data.length === 0) return { labels: [], datasets: [] };
+
+    // Sort data by timestamp
+    const sortedData = [...data].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    let processedData;
+    
+    switch(timeScale) {
+      case 'recent': {
+        // Get the last 12 data points
+        const last12Entries = sortedData.slice(-12);
+        
+        const prices = last12Entries.map(item => {
+          // Parse price value - remove commas and convert to number
+          const priceStr = item.value.toString().replace(/,/g, '');
+          return parseFloat(priceStr);
+        });
+
+        // Calculate rolling average for benchmark line
+        const rollingAverages = prices.map((_, index) => {
+          const subset = prices.slice(0, index + 1);
+          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: last12Entries.map(item => 
+            new Date(item.timestamp).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: 'numeric',
+              hour12: true
+            })
+          ),
+          prices: prices,
+          averagePrice: rollingAverages
+        };
+        break;
+      }
+      
+      case 'daily': {
+        // Get all data points from the last 7 days
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= sevenDaysAgo);
+        
+        // Limit to max 100 points to prevent overcrowding
+        if (recentData.length > 100) {
+          const step = Math.ceil(recentData.length / 100);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const prices = recentData.map(item => {
+          const priceStr = item.value.toString().replace(/,/g, '');
+          return parseFloat(priceStr);
+        });
+
+        const rollingAverages = prices.map((_, index) => {
+          const subset = prices.slice(0, index + 1);
+          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })
+          ),
+          prices: prices,
+          averagePrice: rollingAverages
+        };
+        break;
+      }
+      
+      case 'weekly': {
+        // Get all data points from the last 4 weeks
+        const fourWeeksAgo = new Date();
+        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+        
+        // Limit to max 200 points to prevent overcrowding
+        if (recentData.length > 200) {
+          const step = Math.ceil(recentData.length / 200);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const prices = recentData.map(item => {
+          const priceStr = item.value.toString().replace(/,/g, '');
+          return parseFloat(priceStr);
+        });
+
+        const rollingAverages = prices.map((_, index) => {
+          const subset = prices.slice(0, index + 1);
+          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })
+          ),
+          prices: prices,
+          averagePrice: rollingAverages
+        };
+        break;
+      }
+      
+      case 'custom': {
+        // Handle custom date range
+        if (!customStartDate || !customEndDate) {
+          // If no custom dates set, fall back to weekly view
+          const fourWeeksAgo = new Date();
+          fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+          
+          let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+          
+          if (recentData.length > 200) {
+            const step = Math.ceil(recentData.length / 200);
+            recentData = recentData.filter((_, index) => index % step === 0);
+          }
+          
+          const prices = recentData.map(item => {
+            const priceStr = item.value.toString().replace(/,/g, '');
+            return parseFloat(priceStr);
+          });
+
+          const rollingAverages = prices.map((_, index) => {
+            const subset = prices.slice(0, index + 1);
+            return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          });
+          
+          processedData = {
+            labels: recentData.map(item => 
+              new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              })
+            ),
+            prices: prices,
+            averagePrice: rollingAverages
+          };
+        } else {
+          // Filter data by custom date range
+          const startDate = new Date(customStartDate);
+          const endDate = new Date(customEndDate);
+          
+          let customData = sortedData.filter(item => {
+            const itemDate = new Date(item.timestamp);
+            return itemDate >= startDate && itemDate <= endDate;
+          });
+          
+          // Limit to max 300 points to prevent overcrowding
+          if (customData.length > 300) {
+            const step = Math.ceil(customData.length / 300);
+            customData = customData.filter((_, index) => index % step === 0);
+          }
+          
+          const prices = customData.map(item => {
+            const priceStr = item.value.toString().replace(/,/g, '');
+            return parseFloat(priceStr);
+          });
+
+          const rollingAverages = prices.map((_, index) => {
+            const subset = prices.slice(0, index + 1);
+            return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          });
+          
+          processedData = {
+            labels: customData.map(item => 
+              new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+              })
+            ),
+            prices: prices,
+            averagePrice: rollingAverages
+          };
+        }
+        break;
+      }
+      
+      default: {
+        // Fall back to weekly view for any unexpected timeScale
+        const fourWeeksAgo = new Date();
+        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+        
+        let recentData = sortedData.filter(item => new Date(item.timestamp) >= fourWeeksAgo);
+        
+        if (recentData.length > 200) {
+          const step = Math.ceil(recentData.length / 200);
+          recentData = recentData.filter((_, index) => index % step === 0);
+        }
+        
+        const prices = recentData.map(item => {
+          const priceStr = item.value.toString().replace(/,/g, '');
+          return parseFloat(priceStr);
+        });
+
+        const rollingAverages = prices.map((_, index) => {
+          const subset = prices.slice(0, index + 1);
+          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+        });
+        
+        processedData = {
+          labels: recentData.map(item => 
+            new Date(item.timestamp).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true
+            })
+          ),
+          prices: prices,
+          averagePrice: rollingAverages
+        };
+        break;
+      }
+    }
+
+    return {
+      labels: processedData.labels,
+      datasets: [
+        {
+          label: 'Rolling Average',
+          data: processedData.averagePrice,
+          borderColor: 'rgb(17, 122, 118)',
+          backgroundColor: 'rgba(183, 184, 184, 0.34)',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0,
+        },
+        {
+          label: `${timeScale === 'recent' ? 'Current' : 'Individual'} Price (USD)`,
+          data: processedData.prices,
+          borderColor: '#00d6b9',
+          backgroundColor: 'rgb(66, 255, 255)',
+          borderWidth: timeScale === 'recent' ? 2 : 1,
+          pointRadius: timeScale === 'recent' ? 4 : 2,
+          pointHoverRadius: timeScale === 'recent' ? 6 : 4,
+          pointBackgroundColor: '#00d6b9',
+          pointBorderColor: '#00d6b9',
+          tension: 0.1,
+        }
+      ]
+    };
+  };
+
   const chartOptions = {
     responsive: true,
     interaction: {
@@ -1731,6 +1981,58 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           color: '#0E5353',
           callback: function(value) {
             return value.toFixed(1) + 's';
+          }
+        },
+        grid: {
+          color: 'rgba(14, 83, 83, 0.1)'
+        }
+      },
+      x: {
+        ticks: {
+          color: '#0E5353',
+          maxRotation: 45,
+          minRotation: 45
+        },
+        grid: {
+          color: 'rgba(14, 83, 83, 0.1)'
+        }
+      }
+    }
+  };
+
+  const priceChartOptions = {
+    responsive: true,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#0E5353',
+          usePointStyle: true,
+          padding: 20
+        }
+      },
+      title: {
+        display: true,
+        text: `Price Performance - ${
+          timeScale === 'recent' ? 'Recent' : 
+          timeScale === 'custom' ? 'Custom Date Range' :
+          'Detailed ' + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
+        } View`,
+        color: '#0E5353',
+        padding: 20
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: false,
+        ticks: {
+          color: '#0E5353',
+          callback: function(value) {
+            return '$' + value.toFixed(2);
           }
         },
         grid: {
@@ -1787,31 +2089,13 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       </Grid>
 
       {/* Side-by-Side Layout: Left (Price Feeds + Data Feed) | Right (Chart) */}
-      <div style={{ 
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '24px',
-        marginBottom: '20px'
-      }}>
+      <div className="datafeed-container">
         {/* Left Column - Price Feeds + Data Feed */}
-        <div style={{ 
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '20px'
-        }}>
+        <div className="datafeed-left-column">
           {/* Oracle Price Feeds */}
-          <div style={{ 
-            padding: '20px', 
-            backgroundColor: 'rgba(14, 83, 83, 0.1)', 
-            borderRadius: '8px',
-            width: '100%'
-          }}>
+          <div className="price-feeds-container">
             {/* Feed Selection - Responsive Layout */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '20px'
-            }}>
+            <div className="price-feeds-grid">
               {/* Ethereum Feeds */}
               <div>
                 <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
@@ -2195,43 +2479,13 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         </div>
 
         {/* Right Column - Chart */}
-        <div style={{ 
-          padding: '24px',
-          backgroundColor: 'rgba(255, 255, 255, 0.08)', 
-          borderRadius: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'fit-content',
-          border: '1px solid rgba(14, 83, 83, 0.2)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(14, 83, 83, 0.1)',
-          backdropFilter: 'blur(8px)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          {/* Chart container background accent */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, #0E5353 0%, #00b96f 50%, #0E5353 100%)',
-            borderRadius: '12px 12px 0 0'
-          }} />
-          
+        <div className="analytics-dashboard">
           {/* Chart header - simple title */}
-          <div style={{ 
-            marginBottom: '20px',
-            textAlign: 'center'
-          }}>
-            <Typography variant="h6" sx={{ 
-              color: '#0E5353', 
-              fontWeight: 'bold',
-              fontSize: '18px'
-            }}>
+          <div className="analytics-dashboard-header">
+            <Typography variant="h6" className="analytics-dashboard-title">
               {feedLoading ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <CircularProgress size={18} style={{ color: '#0E5353' }} />
+                <div className="analytics-loading">
+                  <CircularProgress size={18} className="loading-spinner" />
                   Loading Chart...
                 </div>
               ) : (
@@ -2249,28 +2503,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             </>
           )}
           
-          {/* Chart canvas container with enhanced styling */}
-          <div style={{ 
-            height: '300px', 
-            width: '100%',
-            padding: '16px',
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            borderRadius: '8px',
-            border: '1px solid rgba(14, 83, 83, 0.1)',
-            position: 'relative',
-            marginTop: '16px'
-          }}>
+          {/* Delay Performance Chart */}
+          <div className="chart-container">
             {feedLoading ? (
-              <div style={{ 
-                height: '100%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                color: '#0E5353',
-                flexDirection: 'column',
-                gap: '16px'
-              }}>
-                <CircularProgress size={40} style={{ color: '#0E5353' }} />
+              <div className="chart-loading">
+                <CircularProgress size={40} className="loading-spinner" />
                 <div>Loading chart data...</div>
               </div>
             ) : (
@@ -2283,21 +2520,28 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               />
             )}
           </div>
+
+          {/* Price Performance Chart */}
+          <div className="chart-container">
+            {feedLoading ? (
+              <div className="chart-loading">
+                <CircularProgress size={40} className="loading-spinner" />
+                <div>Loading price chart data...</div>
+              </div>
+            ) : (
+              <Line 
+                options={{
+                  ...priceChartOptions,
+                  maintainAspectRatio: false
+                }} 
+                data={preparePriceChartData(currentValue)} 
+              />
+            )}
+          </div>
           
           {/* Chart footer with additional info */}
-          <div style={{
-            marginTop: '16px',
-            padding: '12px 16px',
-            backgroundColor: 'rgba(14, 83, 83, 0.05)',
-            borderRadius: '6px',
-            border: '1px solid rgba(14, 83, 83, 0.08)',
-            textAlign: 'center'
-          }}>
-            <Typography variant="caption" sx={{ 
-              color: '#0E5353', 
-              opacity: 0.6,
-              fontSize: '11px'
-            }}>
+          <div className="chart-footer">
+            <Typography variant="caption" className="chart-footer-text">
               Data updates every 30 seconds • Hover for detailed metrics
             </Typography>
           </div>
