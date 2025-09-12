@@ -11,8 +11,14 @@ import {
   Box,
   Pagination,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Tooltip
 } from '@mui/material';
+import { InfoOutlined } from '@mui/icons-material';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -20,7 +26,7 @@ import {
   PointElement,
   LineElement,
   Title,
-  Tooltip,
+  Tooltip as ChartTooltip,
   Legend
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
@@ -35,7 +41,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Title,
-  Tooltip,
+  ChartTooltip,
   Legend
 );
 
@@ -59,6 +65,31 @@ const DATABANK_PRICE_PAIRS = {
   'KING/USD': '0xd62f132d9d04dde6e223d4366c48b47cd9f90228acdc6fa755dab93266db5176',
   'sUSDe/USD': '0x03731257e35c49e44b267640126358e5decebdd8f18b5e8f229542ec86e318cf',
   'stATOM/USD': '0x611fd0e88850bf0cc036d96d04d47605c90b993485c2971e022b5751bbb04f23'
+};
+
+// Feed risk assessment mapping
+const FEED_RISK_ASSESSMENT = {
+  'BTC/USD': 'exemplary',      // 3 bars
+  'ETH/USD': 'exemplary',      // 3 bars
+  'SAGA/USD': 'moderate',      // 2 bars
+  'USDC/USD': 'moderate',      // 2 bars
+  'USDT/USD': 'moderate',      // 2 bars
+  'USDN/USD': 'moderate',      // 2 bars
+  'sUSDS/USD': 'moderate',     // 2 bars
+  'yUSD/USD': 'high',          // 1 bar
+  'tBTC/USD': 'moderate',      // 2 bars
+  'rETH/USD': 'moderate',      // 2 bars
+  'wstETH/USD': 'moderate',    // 2 bars
+  'KING/USD': 'moderate',      // 2 bars
+  'sUSDe/USD': 'moderate',     // 2 bars
+  'stATOM/USD': 'moderate'     // 2 bars
+};
+
+// Risk level to bar count mapping
+const RISK_BAR_COUNT = {
+  'exemplary': 3,
+  'moderate': 2,
+  'high': 1
 };
 
 const DataFeed = () => {
@@ -331,13 +362,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   setCurrentValue(prevData => {
                     // CRITICAL: Validate we're still processing the correct feed
                     if (currentFeed !== targetFeed || currentFeedRef.current !== targetFeed) {
-                      console.log('Feed mismatch detected, skipping transaction:', { currentFeed, targetFeed, currentFeedRef: currentFeedRef.current });
                       return prevData; // Feed changed, don't add this data
                     }
                     
                     // For DataBank contracts, only add data if it's for the current feed
                     if (isDataBankContract && currentFeedRef.current && newTransaction.pair && newTransaction.pair !== currentFeedRef.current) {
-                      console.log('Wrong feed data, skipping:', { transactionPair: newTransaction.pair, currentFeed: currentFeedRef.current });
                       return prevData; // Don't add data for wrong feed
                     }
                     
@@ -719,13 +748,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   useEffect(() => {
     // Skip main data fetching if a specific DataBank feed is selected
     if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-      console.log('Skipping main fetch: DataBank feed selected');
       return;
     }
     
     // Skip if we're switching to DataBank contract but don't have feed yet
     if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-      console.log('Skipping main fetch: DataBank contract without selected feed');
       return;
     }
     
@@ -768,12 +795,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         if (processedData && processedData.length > 0) {
           // CRITICAL: Only set data if we're still on the right contract type
           if (!selectedDataBankFeed && contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-            console.log('Setting Tellor data:', processedData.length, 'transactions');
             setCurrentValue(processedData);
             currentValueRef.current = processedData;
             setInitialFetchComplete(true); // Mark initial fetch as complete
           } else {
-            console.log('Contract type changed during fetch, discarding Tellor data');
             setCurrentValue([]);
             currentValueRef.current = [];
           }
@@ -924,7 +949,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 setCurrentValue(prevData => {
                   // CRITICAL: Validate we're still on the correct feed
                   if (currentFeed !== selectedDataBankFeed || currentFeedRef.current !== selectedDataBankFeed) {
-                    console.log('Auto-refresh feed mismatch, skipping update:', { currentFeed, selectedDataBankFeed, currentFeedRef: currentFeedRef.current });
                     return prevData;
                   }
                   
@@ -1003,8 +1027,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Effect to immediately clear data when feed changes
   useEffect(() => {
-    console.log('Feed change effect triggered:', { selectedDataBankFeed, currentFeed });
-    
     // CRITICAL: Always clear data immediately when feed changes, regardless of feed type
     setCurrentValue([]);
     currentValueRef.current = [];
@@ -1204,8 +1226,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Cleanup effect to clear all data when switching contract types
   useEffect(() => {
-    console.log('Contract address change effect:', { contractAddress, selectedDataBankFeed, isDataBankContract });
-    
     // CRITICAL: Always clear data completely when switching contract types
     setCurrentValue([]);
     currentValueRef.current = [];
@@ -1698,13 +1718,17 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         const prices = last12Entries.map(item => {
           // Parse price value - remove commas and convert to number
           const priceStr = item.value.toString().replace(/,/g, '');
-          return parseFloat(priceStr);
+          const price = parseFloat(priceStr);
+          return price;
         });
 
         // Calculate rolling average for benchmark line
         const rollingAverages = prices.map((_, index) => {
           const subset = prices.slice(0, index + 1);
-          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          const validPrices = subset.filter(price => !isNaN(price) && price > 0);
+          const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+          // Round to 2 decimal places for consistent precision
+          return Math.round(avg * 100) / 100;
         });
         
         processedData = {
@@ -1741,7 +1765,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
         const rollingAverages = prices.map((_, index) => {
           const subset = prices.slice(0, index + 1);
-          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          const validPrices = subset.filter(price => price > 0);
+          const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+          return Math.round(avg * 100) / 100;
         });
         
         processedData = {
@@ -1780,7 +1806,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
         const rollingAverages = prices.map((_, index) => {
           const subset = prices.slice(0, index + 1);
-          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          const validPrices = subset.filter(price => price > 0);
+          const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+          return Math.round(avg * 100) / 100;
         });
         
         processedData = {
@@ -1820,7 +1848,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
           const rollingAverages = prices.map((_, index) => {
             const subset = prices.slice(0, index + 1);
-            return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+            const validPrices = subset.filter(price => !isNaN(price) && price > 0);
+            const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+            return Math.round(avg * 100) / 100;
           });
           
           processedData = {
@@ -1859,7 +1889,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
           const rollingAverages = prices.map((_, index) => {
             const subset = prices.slice(0, index + 1);
-            return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+            const validPrices = subset.filter(price => !isNaN(price) && price > 0);
+            const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+            return Math.round(avg * 100) / 100;
           });
           
           processedData = {
@@ -1898,7 +1930,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
         const rollingAverages = prices.map((_, index) => {
           const subset = prices.slice(0, index + 1);
-          return subset.reduce((sum, price) => sum + price, 0) / subset.length;
+          const validPrices = subset.filter(price => price > 0);
+          const avg = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
+          return Math.round(avg * 100) / 100;
         });
         
         processedData = {
@@ -1917,6 +1951,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         break;
       }
     }
+
 
     return {
       labels: processedData.labels,
@@ -1965,7 +2000,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       },
       title: {
         display: true,
-        text: `Delay Performance - ${
+        text: `Delay - ${
           timeScale === 'recent' ? 'Recent' : 
           timeScale === 'custom' ? 'Custom Date Range' :
           'Detailed ' + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
@@ -2017,7 +2052,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       },
       title: {
         display: true,
-        text: `Price Performance - ${
+        text: `Price - ${
           timeScale === 'recent' ? 'Recent' : 
           timeScale === 'custom' ? 'Custom Date Range' :
           'Detailed ' + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
@@ -2116,7 +2151,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     onClick={() => {
                       if (feedLoading) return; // Prevent clicks during loading
                       
-                      console.log('Sepolia ETH/USD button clicked');
                       setFeedLoading(true); // Start loading immediately
                       
                       // Clear DataBank feed selection immediately
@@ -2193,97 +2227,318 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     </span>
                   )}
                 </Typography>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                  {Object.entries(DATABANK_PRICE_PAIRS).map(([pairName, queryId]) => (
-                    <button
-                      key={pairName}
-                      onClick={() => {
-                        if (feedLoading) return; // Prevent clicks during loading
-                        
-                        if (selectedDataBankFeed === pairName) {
-                          // Deselect if already selected
-                          setFeedLoading(true); // Start loading immediately
-                          
-                          // IMMEDIATELY clear all data and cancel operations
-                          setCancellationToken(prev => prev + 1); // Cancel ongoing operations
-                          // Synchronously clear refs first
+                
+                
+                <FormControl 
+                  size="small" 
+                  sx={{ 
+                    minWidth: 200, 
+                    '& .MuiOutlinedInput-root': {
+                      color: '#0E5353',
+                      '& fieldset': {
+                        borderColor: '#0E5353',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: '#0E5353',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: '#0E5353',
+                      },
+                    }
+                  }}
+                >
+                  <InputLabel sx={{ color: '#0E5353' }}>Select Saga Feed</InputLabel>
+                  <Select
+                    value={selectedDataBankFeed || ''}
+                    label="Select Saga Feed"
+                    onChange={(e) => {
+                      const selectedFeed = e.target.value;
+                      if (feedLoading) return;
+                      
+                      if (selectedFeed === '') {
+                        // Deselect
+                        setFeedLoading(true);
+                        setCancellationToken(prev => prev + 1);
                           currentValueRef.current = [];
                           currentFeedRef.current = null;
-                          // Then clear state
                           setCurrentValue([]);
                           setCurrentFeed(null);
                           setInitialFetchComplete(false);
                           setIsIncrementalLoading(false);
-                          setPage(1); // Reset to first page
-                          setForceUpdate(prev => prev + 1); // Force immediate re-render
-                          setRenderKey(prev => prev + 1); // Force immediate re-render
-                          
-                          // Then update other states
+                        setPage(1);
+                        setForceUpdate(prev => prev + 1);
+                        setRenderKey(prev => prev + 1);
                           setSelectedDataBankFeed(null);
                           setIsDataBankContract(false);
                           setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
                           setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
                         } else {
-                          // Select this feed
-                          setFeedLoading(true); // Start loading immediately
-                          
-                          // IMMEDIATELY clear all data and cancel operations
-                          setCancellationToken(prev => prev + 1); // Cancel ongoing operations
-                          // Synchronously clear refs first
+                        // Select new feed
+                        setFeedLoading(true);
+                        setCancellationToken(prev => prev + 1);
                           currentValueRef.current = [];
-                          currentFeedRef.current = pairName;
-                          // Then clear state
+                        currentFeedRef.current = selectedFeed;
                           setCurrentValue([]);
-                          setCurrentFeed(pairName);
+                        setCurrentFeed(selectedFeed);
                           setInitialFetchComplete(false);
                           setIsIncrementalLoading(false);
-                          setPage(1); // Reset to first page
-                          setForceUpdate(prev => prev + 1); // Force immediate re-render
-                          setRenderKey(prev => prev + 1); // Force immediate re-render
-                          
-                          // Then update other states
-                          setSelectedDataBankFeed(pairName);
+                        setPage(1);
+                        setForceUpdate(prev => prev + 1);
+                        setRenderKey(prev => prev + 1);
+                        setSelectedDataBankFeed(selectedFeed);
                           setIsDataBankContract(true);
                           setContractAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
                           setInputAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
                         }
                       }}
                       disabled={feedLoading}
+                    renderValue={(selected) => {
+                      if (!selected) return '';
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
                       style={{ 
-                        minWidth: '100px',
-                        padding: '8px 16px',
-                        textTransform: 'none',
-                        fontWeight: selectedDataBankFeed === pairName ? 'bold' : 'normal',
-                        backgroundColor: selectedDataBankFeed === pairName ? '#0E5353' : 'transparent',
-                        color: selectedDataBankFeed === pairName ? 'white' : '#0E5353',
-                        border: `2px solid #0E5353`,
-                        borderRadius: '4px',
-                        cursor: feedLoading ? 'not-allowed' : 'pointer',
-                        fontSize: '12px',
-                        transition: 'all 0.2s ease',
-                        opacity: feedLoading ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!feedLoading) {
-                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!feedLoading) {
-                          e.target.style.backgroundColor = selectedDataBankFeed === pairName ? '#0E5353' : 'transparent';
-                        }
-                      }}
-                    >
-                      {feedLoading && selectedDataBankFeed === pairName ? (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                          <CircularProgress size={12} style={{ color: 'white' }} />
-                          <span>Loading...</span>
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'flex-start',
+                              flexShrink: 0
+                            }}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[selected] || 'high'] 
+                                    ? '#0E5353'
+                                    : 'rgba(14,83,83,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>{selected}</span>
                         </div>
-                      ) : (
-                        pairName
-                      )}
-                    </button>
-                  ))}
+                      );
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                    {/* Active feeds */}
+                    {Object.entries(DATABANK_PRICE_PAIRS)
+                      .filter(([pairName]) => !['rETH/USD', 'wstETH/USD', 'KING/USD', 'sUSDe/USD', 'stATOM/USD'].includes(pairName))
+                      .map(([pairName, queryId]) => (
+                      <MenuItem key={pairName} value={pairName}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'flex-start',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT[pairName] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT[pairName] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[pairName] || 'high'] 
+                                    ? 'white'
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>{pairName}</span>
+                        </div>
+                      </MenuItem>
+                    ))}
+                    {/* Coming Soon separator */}
+                    <MenuItem disabled sx={{ 
+                      opacity: '0.6 !important',
+                      fontStyle: 'italic',
+                      fontSize: '12px',
+                      borderTop: '1px solid rgba(255,255,255,0.1)',
+                      marginTop: '4px',
+                      paddingTop: '8px'
+                    }}>
+                      <em>— Coming Soon —</em>
+                    </MenuItem>
+                    {/* Coming Soon feeds */}
+                    {['rETH/USD', 'wstETH/USD', 'KING/USD', 'sUSDe/USD', 'stATOM/USD'].map((pairName) => (
+                      <MenuItem key={pairName} value={pairName} disabled sx={{ opacity: '0.5 !important' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'flex-start',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT[pairName] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT[pairName] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[pairName] || 'high'] 
+                                    ? 'rgba(255,255,255,0.3)'
+                                    : 'rgba(255,255,255,0.15)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>{pairName}</span>
+                        </div>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                </div>
+              </div>
+            
+            {/* Risk Assessment Legend - Applies to All Feeds */}
+            <div style={{ 
+              marginTop: '20px',
+              padding: '12px 16px', 
+              backgroundColor: 'rgba(14, 83, 83, 0.05)', 
+              borderRadius: '6px',
+              border: '1px solid rgba(14, 83, 83, 0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Typography variant="caption" sx={{ 
+                  color: '#0E5353', 
+                  fontWeight: 'bold', 
+                  fontSize: '11px'
+                }}>
+                  'Best Practices' Rating:
+                </Typography>
+                <Tooltip
+                  title={
+                    <div style={{ padding: '12px', textAlign: 'center' }}>
+                      <img 
+                        src="/Best-practices-Rating.png" 
+                        alt="Best Practices Rating Chart"
+                        style={{ 
+                          maxWidth: '800px', 
+                          width: '100%', 
+                          height: 'auto',
+                          borderRadius: '6px',
+                          display: 'block'
+                        }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'block';
+                        }}
+                      />
+                      <div style={{ 
+                        display: 'none', 
+                        color: 'white', 
+                        fontSize: '14px', 
+                        padding: '20px',
+                        textAlign: 'center'
+                      }}>
+                        Best Practices Rating Chart<br/>
+                        <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                          (Add Best-practices-Rating.png to public folder)
+                        </span>
+                      </div>
+                    </div>
+                  }
+                  placement="right"
+                  arrow
+                  componentsProps={{
+                    tooltip: {
+                      sx: {
+                        bgcolor: 'rgba(0, 0, 0, 0.9)',
+                        maxWidth: '850px',
+                        '& .MuiTooltip-arrow': {
+                          color: 'rgba(0, 0, 0, 0.9)',
+                        },
+                      },
+                    },
+                  }}
+                >
+                  <InfoOutlined sx={{ 
+                    fontSize: '14px', 
+                    color: '#0E5353', 
+                    cursor: 'help',
+                    opacity: 0.7,
+                    '&:hover': {
+                      opacity: 1
+                    }
+                  }} />
+                </Tooltip>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column-reverse',
+                    gap: '1px', 
+                    height: '8px'
+                  }}>
+                    {Array.from({ length: 3 }, (_, i) => (
+                      <div key={i} style={{
+                        width: '6px',
+                        height: '2px',
+                        backgroundColor: '#0E5353',
+                        borderRadius: '1px'
+                      }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#0E5353' }}>Exemplary</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column-reverse',
+                    gap: '1px', 
+                    height: '8px'
+                  }}>
+                    {Array.from({ length: 3 }, (_, i) => (
+                      <div key={i} style={{
+                        width: '6px',
+                        height: '2px',
+                        backgroundColor: i < 2 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                        borderRadius: '1px'
+                      }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#0E5353' }}>Moderate</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column-reverse',
+                    gap: '1px', 
+                    height: '8px'
+                  }}>
+                    {Array.from({ length: 3 }, (_, i) => (
+                      <div key={i} style={{
+                        width: '6px',
+                        height: '2px',
+                        backgroundColor: i < 1 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                        borderRadius: '1px'
+                      }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#0E5353' }}>High Risk</span>
                 </div>
               </div>
             </div>
