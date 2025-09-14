@@ -1702,6 +1702,13 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     };
   };
 
+  // Helper function to format prices without decimals and with commas
+  const formatPrice = (value) => {
+    if (isNaN(value) || value === null || value === undefined) return '$0';
+    const rounded = Math.round(value);
+    return '$' + rounded.toLocaleString();
+  };
+
   const preparePriceChartData = (data) => {
     if (!Array.isArray(data) || data.length === 0) return { labels: [], datasets: [] };
 
@@ -2059,6 +2066,15 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         } View`,
         color: '#0E5353',
         padding: 20
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const label = context.dataset.label || '';
+            const value = context.parsed.y;
+            return `${label}: ${formatPrice(value)}`;
+          }
+        }
       }
     },
     scales: {
@@ -2067,7 +2083,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         ticks: {
           color: '#0E5353',
           callback: function(value) {
-            return '$' + value.toFixed(2);
+            return formatPrice(value);
           }
         },
         grid: {
