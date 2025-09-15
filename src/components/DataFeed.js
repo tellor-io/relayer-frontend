@@ -2146,90 +2146,120 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           {/* Oracle Price Feeds */}
           <div className="price-feeds-container">
             {/* Feed Selection - Responsive Layout */}
-            <div className="price-feeds-grid">
-              {/* Ethereum Feeds */}
-              <div>
-                <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
-                  Sepolia Feeds:
-                  {feedLoading && !isDataBankContract && (
-                    <span style={{ 
-                      marginLeft: '8px', 
-                      fontSize: '12px', 
-                      opacity: 0.7,
-                      fontWeight: 'normal'
-                    }}>
-                      (Loading...)
-                    </span>
-                  )}
-                </Typography>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                <button
-                    onClick={() => {
-                      if (feedLoading) return; // Prevent clicks during loading
-                      
-                      setFeedLoading(true); // Start loading immediately
-                      
-                      // Clear DataBank feed selection immediately
-                      setSelectedDataBankFeed(null);
-                      
-                      // Set contract states
-                      setIsDataBankContract(false);
-                      setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
-                      setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
-                      
-                      // Clear current data immediately to show loading state
-                      setCurrentValue([]);
-                      currentValueRef.current = [];
-                      setCurrentFeed(null);
-                      currentFeedRef.current = null;
-                      setInitialFetchComplete(false);
-                      setIsIncrementalLoading(false);
-                      setPage(1);
-                      
-                      // Force re-render
-                      setForceUpdate(prev => prev + 1);
-                      setRenderKey(prev => prev + 1);
-                    }}
-                    disabled={feedLoading}
-                  style={{
-                      minWidth: '150px',
-                    padding: '8px 16px',
-                      textTransform: 'none',
-                      fontWeight: (!isDataBankContract && !selectedDataBankFeed) ? 'bold' : 'normal',
-                      backgroundColor: (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent',
-                      color: (!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353',
-                      border: `2px solid #0E5353`,
-                    borderRadius: '4px',
-                    cursor: feedLoading ? 'not-allowed' : 'pointer',
-                      fontSize: '12px',
-                      transition: 'all 0.2s ease',
-                      opacity: feedLoading ? 0.6 : 1
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!feedLoading) {
-                        e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!feedLoading) {
-                        e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent';
-                      }
-                    }}
-                  >
-                    {feedLoading && !selectedDataBankFeed ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                        <CircularProgress size={12} style={{ color: 'white' }} />
-                        <span>Loading...</span>
-                      </div>
-                    ) : (
-                      'ETH/USD'
+            <div style={{ display: 'flex', gap: '24px', justifyContent: 'space-between' }}>
+              {/* Left Side - Feed Sections */}
+              <div style={{ display: 'flex', gap: '40px', flex: '0 0 auto' }}>
+                {/* Ethereum Feeds */}
+                <div>
+                  <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
+                    Sepolia Feeds:
+                    {feedLoading && !isDataBankContract && (
+                      <span style={{ 
+                        marginLeft: '8px', 
+                        fontSize: '12px', 
+                        opacity: 0.7,
+                        fontWeight: 'normal'
+                      }}>
+                        (Loading...)
+                      </span>
                     )}
-                </button>
+                  </Typography>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button
+                      onClick={() => {
+                        if (feedLoading) return; // Prevent clicks during loading
+                        
+                        setFeedLoading(true); // Start loading immediately
+                        
+                        // Clear DataBank feed selection immediately
+                        setSelectedDataBankFeed(null);
+                        
+                        // Set contract states
+                        setIsDataBankContract(false);
+                        setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                        setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                        
+                        // Clear current data immediately to show loading state
+                        setCurrentValue([]);
+                        currentValueRef.current = [];
+                        setCurrentFeed(null);
+                        currentFeedRef.current = null;
+                        setInitialFetchComplete(false);
+                        setIsIncrementalLoading(false);
+                        setPage(1);
+                        
+                        // Force re-render
+                        setForceUpdate(prev => prev + 1);
+                        setRenderKey(prev => prev + 1);
+                      }}
+                      disabled={feedLoading}
+                  style={{
+                      minWidth: '110px',
+                    padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: (!isDataBankContract && !selectedDataBankFeed) ? 'bold' : 'normal',
+                        backgroundColor: (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent',
+                        color: (!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                      borderRadius: '4px',
+                      cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading) {
+                          e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && !selectedDataBankFeed ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT['ETH/USD'] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT['ETH/USD'] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
+                                    ? 'white'
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>ETH/USD</span>
+                        </div>
+                      )}
+                  </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Saga Feeds */}
-              <div style={{ marginLeft: '40px' }}>
+                {/* Saga Feeds */}
+                <div>
                 <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
                   Saga Feeds:
                   {feedLoading && (
@@ -2248,22 +2278,30 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 <FormControl 
                   size="small" 
                   sx={{ 
-                    minWidth: 200, 
+                    minWidth: 125,
+                    height: '36px',
                     '& .MuiOutlinedInput-root': {
                       color: '#0E5353',
+                      height: '36px',
                       '& fieldset': {
                         borderColor: '#0E5353',
+                        borderWidth: '2px',
                       },
                       '&:hover fieldset': {
                         borderColor: '#0E5353',
+                        borderWidth: '2px',
                       },
                       '&.Mui-focused fieldset': {
                         borderColor: '#0E5353',
+                        borderWidth: '2px',
                       },
+                    },
+                    '& .MuiSelect-icon': {
+                      color: '#0E5353',
                     }
                   }}
                 >
-                  <InputLabel sx={{ color: '#0E5353' }}>Select Saga Feed</InputLabel>
+                  <InputLabel sx={{ color: '#0E5353' }}>Select Feed</InputLabel>
                   <Select
                     value={selectedDataBankFeed || ''}
                     label="Select Saga Feed"
@@ -2344,9 +2382,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     <MenuItem value="">
                       <em>None</em>
                     </MenuItem>
-                    {/* Active feeds */}
+                    {/* All feeds */}
                     {Object.entries(DATABANK_PRICE_PAIRS)
-                      .filter(([pairName]) => !['rETH/USD', 'wstETH/USD', 'KING/USD', 'sUSDe/USD', 'stATOM/USD'].includes(pairName))
                       .map(([pairName, queryId]) => (
                       <MenuItem key={pairName} value={pairName}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2379,182 +2416,140 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         </div>
                       </MenuItem>
                     ))}
-                    {/* Coming Soon separator */}
-                    <MenuItem disabled sx={{ 
-                      opacity: '0.6 !important',
-                      fontStyle: 'italic',
-                      fontSize: '12px',
-                      borderTop: '1px solid rgba(255,255,255,0.1)',
-                      marginTop: '4px',
-                      paddingTop: '8px'
-                    }}>
-                      <em>— Coming Soon —</em>
-                    </MenuItem>
-                    {/* Coming Soon feeds */}
-                    {['rETH/USD', 'wstETH/USD', 'KING/USD', 'sUSDe/USD', 'stATOM/USD'].map((pairName) => (
-                      <MenuItem key={pairName} value={pairName} disabled sx={{ opacity: '0.5 !important' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <div 
-                            style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column-reverse',
-                              gap: '1px', 
-                              height: '10px',
-                              justifyContent: 'flex-start',
-                              flexShrink: 0
-                            }}
-                            title={`Risk Level: ${FEED_RISK_ASSESSMENT[pairName] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT[pairName] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
-                          >
-                            {Array.from({ length: 3 }, (_, index) => (
-                              <div
-                                key={index}
-                                style={{
-                                  width: '6px',
-                                  height: '2px',
-                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[pairName] || 'high'] 
-                                    ? 'rgba(255,255,255,0.3)'
-                                    : 'rgba(255,255,255,0.15)',
-                                  borderRadius: '1px'
-                                }}
-                              />
-                            ))}
-                          </div>
-                          <span>{pairName}</span>
-                        </div>
-                      </MenuItem>
-                    ))}
                   </Select>
                 </FormControl>
                 </div>
               </div>
-            
-            {/* Risk Assessment Legend - Applies to All Feeds */}
-            <div style={{ 
-              marginTop: '20px',
-              padding: '12px 16px', 
-              backgroundColor: 'rgba(14, 83, 83, 0.05)', 
-              borderRadius: '6px',
-              border: '1px solid rgba(14, 83, 83, 0.1)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <Typography variant="caption" sx={{ 
-                  color: '#0E5353', 
-                  fontWeight: 'bold', 
-                  fontSize: '11px'
-                }}>
-                  'Best Practices' Rating:
-                </Typography>
-                <Tooltip
-                  title={
-                    <div style={{ padding: '12px', textAlign: 'center' }}>
-                      <img 
-                        src="/Best-practices-Rating.png" 
-                        alt="Best Practices Rating Chart"
-                        style={{ 
-                          maxWidth: '800px', 
-                          width: '100%', 
-                          height: 'auto',
-                          borderRadius: '6px',
-                          display: 'block'
-                        }}
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'block';
-                        }}
-                      />
-                      <div style={{ 
-                        display: 'none', 
-                        color: 'white', 
-                        fontSize: '14px', 
-                        padding: '20px',
-                        textAlign: 'center'
-                      }}>
-                        Best Practices Rating Chart<br/>
-                        <span style={{ fontSize: '12px', opacity: 0.8 }}>
-                          (Add Best-practices-Rating.png to public folder)
-                        </span>
+              
+              {/* Right Side - Best Practices Rating Legend */}
+              <div style={{ 
+                padding: '12px 16px', 
+                backgroundColor: 'rgba(14, 83, 83, 0.05)', 
+                borderRadius: '6px',
+                border: '1px solid rgba(14, 83, 83, 0.1)',
+                width: 'fit-content',
+                alignSelf: 'flex-end'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <Typography variant="caption" sx={{ 
+                    color: '#0E5353', 
+                    fontWeight: 'bold', 
+                    fontSize: '11px'
+                  }}>
+                    'Best Practices' Rating:
+                  </Typography>
+                  <Tooltip
+                    title={
+                      <div style={{ padding: '12px', textAlign: 'center' }}>
+                        <img 
+                          src="/BPR.png" 
+                          alt="Best Practices Rating Chart"
+                          style={{ 
+                            maxWidth: '800px', 
+                            width: '100%', 
+                            height: 'auto',
+                            borderRadius: '6px',
+                            display: 'block'
+                          }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'block';
+                          }}
+                        />
+                        <div style={{ 
+                          display: 'none', 
+                          color: 'white', 
+                          fontSize: '14px', 
+                          padding: '20px',
+                          textAlign: 'center'
+                        }}>
+                          Best Practices Rating Chart<br/>
+                          <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                            (Add Best-practices-Rating.png to public folder)
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  }
-                  placement="right"
-                  arrow
-                  componentsProps={{
-                    tooltip: {
-                      sx: {
-                        bgcolor: 'rgba(0, 0, 0, 0.9)',
-                        maxWidth: '850px',
-                        '& .MuiTooltip-arrow': {
-                          color: 'rgba(0, 0, 0, 0.9)',
+                    }
+                    placement="bottom"
+                    arrow
+                    componentsProps={{
+                      tooltip: {
+                        sx: {
+                          bgcolor: 'rgba(0, 0, 0, 0.9)',
+                          maxWidth: '850px',
+                          '& .MuiTooltip-arrow': {
+                            color: 'rgba(0, 0, 0, 0.9)',
+                          },
                         },
                       },
-                    },
-                  }}
-                >
-                  <InfoOutlined sx={{ 
-                    fontSize: '14px', 
-                    color: '#0E5353', 
-                    cursor: 'help',
-                    opacity: 0.7,
-                    '&:hover': {
-                      opacity: 1
-                    }
-                  }} />
-                </Tooltip>
-              </div>
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column-reverse',
-                    gap: '1px', 
-                    height: '8px'
-                  }}>
-                    {Array.from({ length: 3 }, (_, i) => (
-                      <div key={i} style={{
-                        width: '6px',
-                        height: '2px',
-                        backgroundColor: '#0E5353',
-                        borderRadius: '1px'
-                      }} />
-                    ))}
-                  </div>
-                  <span style={{ fontSize: '10px', color: '#0E5353' }}>Exemplary</span>
+                    }}
+                  >
+                    <InfoOutlined sx={{ 
+                      fontSize: '14px', 
+                      color: '#0E5353', 
+                      cursor: 'help',
+                      opacity: 0.7,
+                      '&:hover': {
+                        opacity: 1
+                      }
+                    }} />
+                  </Tooltip>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column-reverse',
-                    gap: '1px', 
-                    height: '8px'
-                  }}>
-                    {Array.from({ length: 3 }, (_, i) => (
-                      <div key={i} style={{
-                        width: '6px',
-                        height: '2px',
-                        backgroundColor: i < 2 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
-                        borderRadius: '1px'
-                      }} />
-                    ))}
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column-reverse',
+                      gap: '1px', 
+                      height: '8px'
+                    }}>
+                      {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} style={{
+                          width: '6px',
+                          height: '2px',
+                          backgroundColor: '#0E5353',
+                          borderRadius: '1px'
+                        }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '10px', color: '#0E5353' }}>Exemplary</span>
                   </div>
-                  <span style={{ fontSize: '10px', color: '#0E5353' }}>Moderate</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column-reverse',
-                    gap: '1px', 
-                    height: '8px'
-                  }}>
-                    {Array.from({ length: 3 }, (_, i) => (
-                      <div key={i} style={{
-                        width: '6px',
-                        height: '2px',
-                        backgroundColor: i < 1 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
-                        borderRadius: '1px'
-                      }} />
-                    ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column-reverse',
+                      gap: '1px', 
+                      height: '8px'
+                    }}>
+                      {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} style={{
+                          width: '6px',
+                          height: '2px',
+                          backgroundColor: i < 2 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                          borderRadius: '1px'
+                        }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '10px', color: '#0E5353' }}>Moderate</span>
                   </div>
-                  <span style={{ fontSize: '10px', color: '#0E5353' }}>High Risk</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column-reverse',
+                      gap: '1px', 
+                      height: '8px'
+                    }}>
+                      {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} style={{
+                          width: '6px',
+                          height: '2px',
+                          backgroundColor: i < 1 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                          borderRadius: '1px'
+                        }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '10px', color: '#0E5353' }}>High Risk</span>
+                  </div>
                 </div>
               </div>
             </div>
