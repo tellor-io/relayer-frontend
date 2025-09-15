@@ -81,7 +81,7 @@ const FEED_RISK_ASSESSMENT = {
   'rETH/USD': 'moderate',      // 2 bars
   'wstETH/USD': 'moderate',    // 2 bars
   'KING/USD': 'moderate',      // 2 bars
-  'sUSDe/USD': 'moderate',     // 2 bars
+  'sUSDe/USD': 'high',         // 1 bar
   'stATOM/USD': 'moderate'     // 2 bars
 };
 
