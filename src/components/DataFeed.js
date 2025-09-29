@@ -64,7 +64,10 @@ const DATABANK_PRICE_PAIRS = {
   'wstETH/USD': '0x1962cde2f19178fe2bb2229e78a6d386e6406979edc7b9a1966d89d83b3ebf2e',
   'KING/USD': '0xd62f132d9d04dde6e223d4366c48b47cd9f90228acdc6fa755dab93266db5176',
   'sUSDe/USD': '0x03731257e35c49e44b267640126358e5decebdd8f18b5e8f229542ec86e318cf',
-  'stATOM/USD': '0x611fd0e88850bf0cc036d96d04d47605c90b993485c2971e022b5751bbb04f23'
+  'stATOM/USD': '0x611fd0e88850bf0cc036d96d04d47605c90b993485c2971e022b5751bbb04f23',
+  'vyUSD/USD': '0x91513b15db3cef441d52058b24412957f9cc8645c53aecf39446ac9b0d2dcca4',
+  'sUSN/USD': '0x187f74d310dc494e6efd928107713d4229cd319c2cf300224de02776090809f1',
+  'sfrxUSD/USD': '0xab30caa3e7827a27c153063bce02c0b260b29c0c164040c003f0f9ec66002510'
 };
 
 // Feed risk assessment mapping
@@ -82,7 +85,10 @@ const FEED_RISK_ASSESSMENT = {
   'wstETH/USD': 'moderate',    // 2 bars
   'KING/USD': 'moderate',      // 2 bars
   'sUSDe/USD': 'high',         // 1 bar
-  'stATOM/USD': 'moderate'     // 2 bars
+  'stATOM/USD': 'moderate',    // 2 bars
+  'vyUSD/USD': 'moderate',     // 2 bars
+  'sUSN/USD': 'moderate',      // 2 bars
+  'sfrxUSD/USD': 'moderate'    // 2 bars
 };
 
 // Risk level to bar count mapping
@@ -2244,7 +2250,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                                   width: '6px',
                                   height: '2px',
                                   backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
-                                    ? 'white'
+                                    ? ((!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353')
                                     : 'rgba(255,255,255,0.3)',
                                   borderRadius: '1px'
                                 }}
