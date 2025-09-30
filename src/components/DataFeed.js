@@ -87,8 +87,8 @@ const FEED_RISK_ASSESSMENT = {
   'sUSDe/USD': 'high',         // 1 bar
   'stATOM/USD': 'moderate',    // 2 bars
   'vyUSD/USD': 'moderate',     // 2 bars
-  'sUSN/USD': 'moderate',      // 2 bars
-  'sfrxUSD/USD': 'moderate'    // 2 bars
+  'sUSN/USD': 'high',      // 1 bars
+  'sfrxUSD/USD': 'high'    // 1 bars
 };
 
 // Risk level to bar count mapping
@@ -1708,11 +1708,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     };
   };
 
-  // Helper function to format prices without decimals and with commas
+  // Helper function to format prices with 2 decimals and with commas
   const formatPrice = (value) => {
-    if (isNaN(value) || value === null || value === undefined) return '$0';
-    const rounded = Math.round(value);
-    return '$' + rounded.toLocaleString();
+    if (isNaN(value) || value === null || value === undefined) return '$0.00';
+    const rounded = Math.round(value * 100) / 100; // Round to 2 decimal places
+    return '$' + rounded.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   };
 
   const preparePriceChartData = (data) => {
