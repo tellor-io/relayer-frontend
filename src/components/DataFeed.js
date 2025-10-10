@@ -46,7 +46,7 @@ ChartJS.register(
 );
 
 const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io/address/";
-const DEFAULT_CONTRACT_ADDRESS = "0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a";
+const DEFAULT_CONTRACT_ADDRESS = "0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a";
 const DATABANK_CONTRACT_ADDRESS = "0x6f250229af8D83c51500f3565b10E93d8907B644";
 
 // DataBank price pair queryIds (these are the specific feeds we want)
@@ -148,8 +148,8 @@ const DataFeed = () => {
   const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
   const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
-  const [contractAddress, setContractAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
-  const [inputAddress, setInputAddress] = useState('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+  const [contractAddress, setContractAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+  const [inputAddress, setInputAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
   const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', 'weekly', or 'custom'
@@ -437,21 +437,89 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   }
 }, [includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
 
-  // Function to fetch data from Tellor contract
+  // Function to fetch data from Tellor contract (updated for new contract structure)
   const fetchTellorData = useCallback(async (contract, provider) => {
     try {
-        const result = await contract.getAllExtendedData();
-
-        if (result && result.length > 0) {
-          // Process all transactions, sort by timestamp descending
-          const processedData = await Promise.all(result.map(async (data, index, array) => {
-            // Convert BigInt values to numbers
-            const timestamp = typeof data.timestamp === 'bigint' ? Number(data.timestamp) : Number(data.timestamp);
-            const relayTimestamp = typeof data.relayTimestamp === 'bigint' ? Number(data.relayTimestamp) : Number(data.relayTimestamp);
-            const value = data.value; // Keep as is for ethers.formatUnits
-            const aggregatePower = typeof data.aggregatePower === 'bigint' ? Number(data.aggregatePower) : Number(data.aggregatePower);
+        // Get ETH/USD query ID - using the same one from DataBank for consistency
+        const ethUsdQueryId = '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992';
+        
+        // Get the count of available data points
+        const count = await contract.getAggregateValueCount(ethUsdQueryId);
+        const countNum = Number(count);
+        
+        if (countNum === 0) {
+          // Let's try to get current data instead
+          try {
+            const currentData = await contract.getCurrentAggregateData(ethUsdQueryId);
+            if (currentData && currentData[0]) {
+              // Process single current data point - data comes as array with indices
+              const value = currentData[0]; // value is at index 0
+              const aggregatePower = typeof currentData[1] === 'bigint' ? Number(currentData[1]) : Number(currentData[1]); // power is at index 1
+              const timestamp = typeof currentData[2] === 'bigint' ? Number(currentData[2]) : Number(currentData[2]); // aggregateTimestamp is at index 2
+              const attestationTimestamp = typeof currentData[3] === 'bigint' ? Number(currentData[3]) : Number(currentData[3]); // attestationTimestamp is at index 3
+              const relayTimestamp = typeof currentData[4] === 'bigint' ? Number(currentData[4]) : Number(currentData[4]); // relayTimestamp is at index 4
+              
+              let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
+              if (includeBlockTime && avgBlockTime > 0) {
+                timeDiff = Math.max(0, timeDiff - avgBlockTime);
+              }
+              
+              const timeDiffFormatted = timeDiff < 60 
+                ? `${timeDiff.toFixed(1)}s`
+                : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
+              
+              return [{
+                value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }),
+                timestamp: new Date(Number(timestamp)).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true
+                }),
+                aggregatePower: aggregatePower.toLocaleString(),
+                relayTimestamp: new Date(Number(relayTimestamp) * 1000).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true
+                }),
+                timeDifference: timeDiffFormatted,
+                blockNumber: "Current",
+                txHash: `tellor_eth_usd_current_${Date.now()}`,
+                note: `Current ETH/USD Data`,
+                _rawTimestamp: Number(timestamp)
+              }];
+            }
+          } catch (currentError) {
+            // No current data available
+          }
+          throw new Error('No data available for ETH/USD');
+        }
+        
+        // Fetch all available data points
+        const processedData = [];
+        for (let i = 0; i < countNum; i++) {
+          try {
+            const data = await contract.getAggregateByIndex(ethUsdQueryId, i);
+            
+            // Convert BigInt values to numbers - data comes as array with indices
+            const value = data[0]; // value is at index 0
+            const aggregatePower = typeof data[1] === 'bigint' ? Number(data[1]) : Number(data[1]); // power is at index 1
+            const timestamp = typeof data[2] === 'bigint' ? Number(data[2]) : Number(data[2]); // aggregateTimestamp is at index 2
+            const attestationTimestamp = typeof data[3] === 'bigint' ? Number(data[3]) : Number(data[3]); // attestationTimestamp is at index 3
+            const relayTimestamp = typeof data[4] === 'bigint' ? Number(data[4]) : Number(data[4]); // relayTimestamp is at index 4
             
             // Calculate time difference in seconds for current row
+            // timestamp is in milliseconds, relayTimestamp is in seconds
             let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
             
             // Subtract block time if toggle is enabled
@@ -469,15 +537,15 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               const currentBlock = await provider.getBlockNumber();
               realBlockNumber = currentBlock;
             } catch (blockError) {
-              realBlockNumber = Math.floor(Number(timestamp) / 1000) || "Unknown";
+              realBlockNumber = Math.floor(Number(timestamp)) || "Unknown";
             }
             
-            return {
+            processedData.push({
               value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
               }),
-              timestamp: new Date(timestamp).toLocaleString('en-US', {
+              timestamp: new Date(Number(timestamp)).toLocaleString('en-US', {
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -487,7 +555,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 hour12: true
               }),
               aggregatePower: aggregatePower.toLocaleString(),
-              relayTimestamp: new Date(relayTimestamp * 1000).toLocaleString('en-US', {
+              relayTimestamp: new Date(Number(relayTimestamp) * 1000).toLocaleString('en-US', {
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -498,18 +566,25 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               }),
               timeDifference: timeDiffFormatted,
               blockNumber: realBlockNumber,
+              txHash: `tellor_eth_usd_${i}_${Date.now()}`, // Generate a unique identifier
+              note: `ETH/USD Data ${i + 1}/${countNum}`,
               // Keep raw timestamp for sorting
-              _rawTimestamp: Number(timestamp)
-            };
-          }));
+              _rawTimestamp: Number(timestamp) * 1000
+            });
+          } catch (itemError) {
+            console.warn(`Failed to fetch data point ${i}:`, itemError);
+            // Continue with other data points
+          }
+        }
+        
+        if (processedData.length === 0) {
+          throw new Error('No valid data retrieved from contract');
+        }
           
           // Sort by raw timestamp descending (newest first)
           processedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
           
         return processedData;
-        } else {
-          throw new Error('No data retrieved from contract');
-      }
     } catch (error) {
       throw error;
     }
@@ -799,15 +874,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         }
         
         if (processedData && processedData.length > 0) {
-          // CRITICAL: Only set data if we're still on the right contract type
-          if (!selectedDataBankFeed && contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-            setCurrentValue(processedData);
-            currentValueRef.current = processedData;
-            setInitialFetchComplete(true); // Mark initial fetch as complete
-          } else {
-            setCurrentValue([]);
-            currentValueRef.current = [];
-          }
+          // Set data for Tellor contract (when not using DataBank)
+          setCurrentValue(processedData);
+          currentValueRef.current = processedData;
+          setInitialFetchComplete(true); // Mark initial fetch as complete
         } else {
           // Don't throw error, just set empty array
           setCurrentValue([]);
@@ -2185,8 +2255,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         
                         // Set contract states
                         setIsDataBankContract(false);
-                        setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
-                        setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                        setContractAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                        setInputAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
                         
                         // Clear current data immediately to show loading state
                         setCurrentValue([]);
@@ -2333,8 +2403,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         setRenderKey(prev => prev + 1);
                           setSelectedDataBankFeed(null);
                           setIsDataBankContract(false);
-                          setContractAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
-                          setInputAddress('0x44941f399c4c009b01bE2D3b0A0852dC8FFD2C4a');
+                          setContractAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                          setInputAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
                         } else {
                         // Select new feed
                         setFeedLoading(true);
