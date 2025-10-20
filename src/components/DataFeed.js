@@ -386,7 +386,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   // Add transaction to data array for batch processing
                   data.push(newTransaction);
                   
-                  // Force React to re-render immediately by updating render key
+                  // Force React to rerender immediately by updating render key
                   setRenderKey(prev => prev + 1);
                   
                   // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
