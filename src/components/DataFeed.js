@@ -16,7 +16,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Tooltip
+  Tooltip,
+  Button
 } from '@mui/material';
 import { InfoOutlined } from '@mui/icons-material';
 import {
@@ -46,7 +47,6 @@ ChartJS.register(
 );
 
 const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io/address/";
-const DEFAULT_CONTRACT_ADDRESS = "0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a";
 const DATABANK_CONTRACT_ADDRESS = "0x6f250229af8D83c51500f3565b10E93d8907B644";
 
 // DataBank price pair queryIds (these are the specific feeds we want)
@@ -148,17 +148,21 @@ const DataFeed = () => {
   const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
   const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
-  const [contractAddress, setContractAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
-  const [inputAddress, setInputAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+  const [contractAddress, setContractAddress] = useState('0x6f250229af8D83c51500f3565b10E93d8907B644');
+  const [inputAddress, setInputAddress] = useState('0x6f250229af8D83c51500f3565b10E93d8907B644');
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
+  const [loadedTransactions, setLoadedTransactions] = useState(0);
+  const [totalTransactions, setTotalTransactions] = useState(0);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const [loadedPages, setLoadedPages] = useState(1); // Track how many pages we've loaded
   const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', 'weekly', or 'custom'
-  const [includeBlockTime, setIncludeBlockTime] = useState(true);
+  const [includeBlockTime, setIncludeBlockTime] = useState(false);
   const [avgBlockTime, setAvgBlockTime] = useState(0);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [isDataBankContract, setIsDataBankContract] = useState(false);
-  const [selectedDataBankFeed, setSelectedDataBankFeed] = useState(null);
+  const [isDataBankContract, setIsDataBankContract] = useState(true);
+  const [selectedDataBankFeed, setSelectedDataBankFeed] = useState('ETH/USD');
   // Add new state for incremental loading
   const [isIncrementalLoading, setIsIncrementalLoading] = useState(false);
   // Add render key to force re-renders
@@ -184,7 +188,7 @@ const DataFeed = () => {
 
     // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
   // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
-const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0, blockTimeOverride = null) => {
+const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0, blockTimeOverride = null, loadMore = false, startIndex = null) => {
 
   try {
     let data = [];
@@ -225,8 +229,23 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             // Convert valueCount to number to prevent BigInt mixing errors
             const numValueCount = Number(valueCount);
             
-            // Process from most recent (highest index) to oldest (index 0)
-            for (let index = numValueCount - 1; index >= 0; index--) {
+            // Set total transactions for pagination
+            setTotalTransactions(numValueCount);
+            
+            // Determine pagination parameters
+            let startIdx, endIdx;
+            if (loadMore && startIndex !== null) {
+              // Loading more transactions from a specific index
+              startIdx = startIndex;
+              endIdx = Math.max(0, startIndex - rowsPerPage);
+            } else {
+              // Initial load - only load first page
+              startIdx = numValueCount - 1;
+              endIdx = Math.max(0, numValueCount - 1 - rowsPerPage);
+            }
+            
+            // Process transactions in the specified range
+            for (let index = startIdx; index > endIdx; index--) {
               try {
                 // Check if feed has changed during processing
                 if (currentFeed !== targetFeed) {
@@ -364,44 +383,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     return;
                   }
                   
-                  // CRITICAL: Update the UI immediately with each new transaction
-                  setCurrentValue(prevData => {
-                    // CRITICAL: Validate we're still processing the correct feed
-                    if (currentFeed !== targetFeed || currentFeedRef.current !== targetFeed) {
-                      return prevData; // Feed changed, don't add this data
-                    }
-                    
-                    // For DataBank contracts, only add data if it's for the current feed
-                    if (isDataBankContract && currentFeedRef.current && newTransaction.pair && newTransaction.pair !== currentFeedRef.current) {
-                      return prevData; // Don't add data for wrong feed
-                    }
-                    
-                    // CRITICAL: Remove any existing data from different feeds before adding new data
-                    const cleanedPrevData = isDataBankContract && currentFeedRef.current 
-                      ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
-                      : prevData;
-                    
-                    // Additional safety check: ensure we don't add duplicate transactions
-                    const isDuplicate = cleanedPrevData.some(existing => 
-                      existing.txHash === newTransaction.txHash || 
-                      (existing.pair === newTransaction.pair && existing._rawTimestamp === newTransaction._rawTimestamp)
-                    );
-                    
-                    if (isDuplicate) {
-                      return cleanedPrevData; // Don't add duplicate
-                    }
-                    
-                    const updatedData = [...cleanedPrevData, newTransaction];
-                    // Sort by timestamp descending (newest first)
-                    const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
-                    // Update ref for immediate access
-                    currentValueRef.current = sortedData;
-                    // Force re-render by updating forceUpdate state
-                    setForceUpdate(prev => prev + 1);
-                    return sortedData;
-                  });
+                  // Add transaction to data array for batch processing
+                  data.push(newTransaction);
                   
-                  // Force React to re-render immediately by updating render key
+                  // Force React to rerender immediately by updating render key
                   setRenderKey(prev => prev + 1);
                   
                   // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
@@ -411,6 +396,84 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               } catch (indexError) {
                 // Silent error handling
               }
+            }
+            
+            // Update UI with batch of transactions
+            if (data.length > 0) {
+              setCurrentValue(prevData => {
+                // CRITICAL: Validate we're still processing the correct feed
+                if (currentFeed !== targetFeed || currentFeedRef.current !== targetFeed) {
+                  return prevData; // Feed changed, don't add this data
+                }
+                
+                // For DataBank contracts, only add data if it's for the current feed
+                if (isDataBankContract && currentFeedRef.current) {
+                  const filteredData = data.filter(tx => tx.pair && tx.pair === currentFeedRef.current);
+                  if (filteredData.length === 0) return prevData;
+                  data = filteredData;
+                }
+                
+                if (loadMore) {
+                  // For load more, append new transactions to existing ones
+                  
+                  // Remove duplicates from new data
+                  const uniqueNewData = data.filter(newTx => 
+                    !prevData.some(existing => 
+                      existing.txHash === newTx.txHash || 
+                      (existing.pair === newTx.pair && existing._rawTimestamp === newTx._rawTimestamp)
+                    )
+                  );
+                  
+                  if (uniqueNewData.length === 0) {
+                    return prevData;
+                  }
+                  
+                  // Append new transactions and sort by timestamp descending (newest first)
+                  const updatedData = [...prevData, ...uniqueNewData];
+                  const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+                  
+                  // Update ref for immediate access
+                  currentValueRef.current = sortedData;
+                  // Update loaded transactions count
+                  setLoadedTransactions(sortedData.length);
+                  // Update loaded pages count
+                  setLoadedPages(Math.ceil(sortedData.length / rowsPerPage));
+                  // Check if there are more transactions to load
+                  setHasMoreTransactions(sortedData.length < numValueCount);
+                  return sortedData;
+                } else {
+                  // For initial load, use the existing logic
+                  // CRITICAL: Remove any existing data from different feeds before adding new data
+                  const cleanedPrevData = isDataBankContract && currentFeedRef.current 
+                    ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
+                    : prevData;
+                  
+                  // Remove duplicates
+                  const uniqueNewData = data.filter(newTx => 
+                    !cleanedPrevData.some(existing => 
+                      existing.txHash === newTx.txHash || 
+                      (existing.pair === newTx.pair && existing._rawTimestamp === newTx._rawTimestamp)
+                    )
+                  );
+                  
+                  if (uniqueNewData.length === 0) {
+                    return cleanedPrevData;
+                  }
+                  
+                  const updatedData = [...cleanedPrevData, ...uniqueNewData];
+                  // Sort by timestamp descending (newest first)
+                  const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+                  // Update ref for immediate access
+                  currentValueRef.current = sortedData;
+                  // Update loaded transactions count
+                  setLoadedTransactions(sortedData.length);
+                  // Update loaded pages count
+                  setLoadedPages(Math.ceil(sortedData.length / rowsPerPage));
+                  // Check if there are more transactions to load
+                  setHasMoreTransactions(sortedData.length < numValueCount);
+                  return sortedData;
+                }
+              });
             }
             
             // Finish incremental loading
@@ -456,7 +519,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               const value = currentData[0]; // value is at index 0
               const aggregatePower = typeof currentData[1] === 'bigint' ? Number(currentData[1]) : Number(currentData[1]); // power is at index 1
               const timestamp = typeof currentData[2] === 'bigint' ? Number(currentData[2]) : Number(currentData[2]); // aggregateTimestamp is at index 2
-              const attestationTimestamp = typeof currentData[3] === 'bigint' ? Number(currentData[3]) : Number(currentData[3]); // attestationTimestamp is at index 3
               const relayTimestamp = typeof currentData[4] === 'bigint' ? Number(currentData[4]) : Number(currentData[4]); // relayTimestamp is at index 4
               
               let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
@@ -505,9 +567,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           throw new Error('No data available for ETH/USD');
         }
         
-        // Fetch all available data points
+        // Fetch data points with pagination (only first page initially)
         const processedData = [];
-        for (let i = 0; i < countNum; i++) {
+        const startIndex = Math.max(0, countNum - rowsPerPage); // Start from most recent
+        const endIndex = countNum; // Go to the end
+        
+        for (let i = startIndex; i < endIndex; i++) {
           try {
             const data = await contract.getAggregateByIndex(ethUsdQueryId, i);
             
@@ -515,7 +580,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             const value = data[0]; // value is at index 0
             const aggregatePower = typeof data[1] === 'bigint' ? Number(data[1]) : Number(data[1]); // power is at index 1
             const timestamp = typeof data[2] === 'bigint' ? Number(data[2]) : Number(data[2]); // aggregateTimestamp is at index 2
-            const attestationTimestamp = typeof data[3] === 'bigint' ? Number(data[3]) : Number(data[3]); // attestationTimestamp is at index 3
             const relayTimestamp = typeof data[4] === 'bigint' ? Number(data[4]) : Number(data[4]); // relayTimestamp is at index 4
             
             // Calculate time difference in seconds for current row
@@ -584,11 +648,201 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           // Sort by raw timestamp descending (newest first)
           processedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
           
+          // Set pagination state for Tellor contracts
+          setTotalTransactions(countNum);
+          setLoadedTransactions(processedData.length);
+          setLoadedPages(Math.ceil(processedData.length / rowsPerPage));
+          setHasMoreTransactions(processedData.length < countNum);
+          
         return processedData;
     } catch (error) {
       throw error;
     }
-  }, [includeBlockTime, avgBlockTime]);
+  }, [includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
+
+  // Function to calculate average block time
+  const calculateAverageBlockTime = async (provider, contractAddress) => {
+    // Disable block time calculation to avoid API limits
+    const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
+    const defaultBlockTime = isSagaChain ? 2 : 12;
+    setAvgBlockTime(defaultBlockTime);
+    return defaultBlockTime;
+  };
+
+  // Function to load more transactions (next page)
+  const loadMoreTransactions = useCallback(async () => {
+    if (!selectedDataBankFeed || !hasMoreTransactions || isIncrementalLoading) {
+      return;
+    }
+    
+    try {
+      setIsIncrementalLoading(true);
+      
+      const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const contract = new ethers.Contract(
+        contractAddress,
+        DataBankABI.abi,
+        provider
+      );
+      
+      // Calculate the next page starting index
+      const currentPage = Math.ceil(loadedTransactions / rowsPerPage);
+      const nextPage = currentPage + 1;
+      const nextStartIndex = Math.max(0, totalTransactions - (nextPage * rowsPerPage));
+      
+      // Calculate block time if needed and not already cached
+      let currentBlockTime = avgBlockTime;
+      if (includeBlockTime && avgBlockTime === 0) {
+        try {
+          currentBlockTime = await calculateAverageBlockTime(provider, contractAddress);
+          setAvgBlockTime(currentBlockTime);
+          } catch (error) {
+          console.warn('Failed to calculate block time for load more, using 0:', error.message);
+          currentBlockTime = 0;
+        }
+      }
+      
+      // Load next page of transactions
+      await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken, currentBlockTime, true, nextStartIndex);
+      
+    } catch (error) {
+      console.error('Error loading more transactions:', error);
+    } finally {
+      setIsIncrementalLoading(false);
+    }
+  }, [selectedDataBankFeed, hasMoreTransactions, isIncrementalLoading, totalTransactions, loadedTransactions, rowsPerPage, contractAddress, avgBlockTime, includeBlockTime, cancellationToken, fetchDataBankData, calculateAverageBlockTime]);
+
+  // Function to load more Tellor transactions (next page)
+  const loadMoreTellorTransactions = useCallback(async () => {
+    if (isDataBankContract || !hasMoreTransactions || isIncrementalLoading) {
+      return;
+    }
+    
+    try {
+      setIsIncrementalLoading(true);
+      
+      const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
+        ? "https://sagaevm.jsonrpc.sagarpc.io"
+        : "https://rpc.sepolia.org";
+      
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const contract = new ethers.Contract(
+        contractAddress,
+        TellorABI.abi,
+        provider
+      );
+      
+      // Calculate the next page starting index
+      const currentPage = Math.ceil(loadedTransactions / rowsPerPage);
+      const nextPage = currentPage + 1;
+      const startIndex = Math.max(0, totalTransactions - (nextPage * rowsPerPage));
+      const endIndex = Math.max(0, totalTransactions - (currentPage * rowsPerPage));
+      
+      
+      // Fetch next page of Tellor transactions
+      const processedData = [];
+      for (let i = startIndex; i < endIndex; i++) {
+        try {
+          const ethUsdQueryId = '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992';
+          const data = await contract.getAggregateByIndex(ethUsdQueryId, i);
+          
+          // Process the data (same logic as in fetchTellorData)
+          const value = data[0];
+          const aggregatePower = typeof data[1] === 'bigint' ? Number(data[1]) : Number(data[1]);
+          const timestamp = typeof data[2] === 'bigint' ? Number(data[2]) : Number(data[2]);
+          const relayTimestamp = typeof data[4] === 'bigint' ? Number(data[4]) : Number(data[4]);
+          
+          let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
+          if (includeBlockTime && avgBlockTime > 0) {
+            timeDiff = Math.max(0, timeDiff - avgBlockTime);
+          }
+          
+          const timeDiffFormatted = timeDiff < 60 
+            ? `${timeDiff.toFixed(1)}s`
+            : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
+          
+          let realBlockNumber = "Fetching...";
+          try {
+            const currentBlock = await provider.getBlockNumber();
+            realBlockNumber = currentBlock;
+          } catch (blockError) {
+            realBlockNumber = Math.floor(Number(timestamp)) || "Unknown";
+          }
+          
+          processedData.push({
+            value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            }),
+            timestamp: new Date(Number(timestamp)).toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true
+            }),
+            aggregatePower: aggregatePower.toLocaleString(),
+            relayTimestamp: new Date(Number(relayTimestamp) * 1000).toLocaleString('en-US', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true
+            }),
+            timeDifference: timeDiffFormatted,
+            blockNumber: realBlockNumber,
+            txHash: `tellor_eth_usd_${i}_${Date.now()}`,
+            note: `ETH/USD Data Point ${i}`,
+            _rawTimestamp: Number(timestamp)
+          });
+        } catch (indexError) {
+          // Silent error handling
+        }
+      }
+      
+      // Update UI with new page
+      if (processedData.length > 0) {
+        setCurrentValue(prevData => {
+          // Remove duplicates from new data
+          const uniqueNewData = processedData.filter(newTx => 
+            !prevData.some(existing => 
+              existing.txHash === newTx.txHash || 
+              existing._rawTimestamp === newTx._rawTimestamp
+            )
+          );
+          
+          if (uniqueNewData.length === 0) {
+            return prevData;
+          }
+          
+          // Append new transactions and sort by timestamp descending (newest first)
+          const updatedData = [...prevData, ...uniqueNewData];
+          const sortedData = updatedData.sort((a, b) => b._rawTimestamp - a._rawTimestamp);
+          
+          // Update ref for immediate access
+          currentValueRef.current = sortedData;
+          // Update loaded transactions count
+          setLoadedTransactions(sortedData.length);
+          // Update loaded pages count
+          setLoadedPages(Math.ceil(sortedData.length / rowsPerPage));
+          // Check if there are more transactions to load
+          setHasMoreTransactions(sortedData.length < totalTransactions);
+          
+          return sortedData;
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error loading more Tellor transactions:', error);
+    } finally {
+      setIsIncrementalLoading(false);
+    }
+  }, [isDataBankContract, hasMoreTransactions, isIncrementalLoading, loadedTransactions, totalTransactions, rowsPerPage, contractAddress, avgBlockTime, includeBlockTime, cancellationToken]);
 
   // Function to fetch only new transactions (for incremental updates)
   const fetchNewTransactionsOnly = useCallback(async (contract, queryId, startIndex, endIndex, token = 0, blockTimeOverride = null) => {
@@ -748,83 +1002,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     }
   }, [selectedDataBankFeed, includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
 
-  // Function to calculate average block time
-  const calculateAverageBlockTime = async (provider, contractAddress) => {
-    try {
-
-      
-      // Get current block
-      const endBlock = await provider.getBlock('latest');
-
-      
-      // Use different block ranges for different chains based on RPC capabilities
-      const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
-      let blockRange, startBlockNumber;
-      
-      if (isSagaChain) {
-        // For Saga, start with a much smaller range that the RPC can likely access
-        blockRange = 1000;
-        startBlockNumber = Math.max(0, endBlock.number - blockRange);
-
-      } else {
-        // For Sepolia, use the full 100,000 block range
-        blockRange = 100000;
-        startBlockNumber = Math.max(0, endBlock.number - blockRange);
-
-      }
-      
-
-
-      
-      const startBlock = await provider.getBlock(startBlockNumber);
-
-      
-      if (!startBlock) {
-
-        // Try with a much smaller range that should definitely work
-        const fallbackRange = isSagaChain ? 100 : 1000;
-        const fallbackStartBlockNumber = Math.max(0, endBlock.number - fallbackRange);
-
-        
-        const fallbackStartBlock = await provider.getBlock(fallbackStartBlockNumber);
-        if (!fallbackStartBlock) {
-
-          const defaultBlockTime = isSagaChain ? 2 : 12;
-
-          setAvgBlockTime(defaultBlockTime);
-          return defaultBlockTime;
-        }
-        
-        const timeDifference = endBlock.timestamp - fallbackStartBlock.timestamp;
-        const blockCount = endBlock.number - fallbackStartBlockNumber;
-        const averageBlockTime = blockCount > 0 ? timeDifference / blockCount : (isSagaChain ? 2 : 12);
-        
-
-        setAvgBlockTime(averageBlockTime);
-        return averageBlockTime;
-      }
-      
-
-      
-      // Calculate average block time
-      const timeDifference = endBlock.timestamp - startBlock.timestamp;
-      const blockCount = endBlock.number - startBlockNumber;
-      const averageBlockTime = blockCount > 0 ? timeDifference / blockCount : 0;
-      
-
-
-        setAvgBlockTime(averageBlockTime);
-        
-        return averageBlockTime;
-    } catch (error) {
-      console.error('Error calculating block time:', error);
-      const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
-      const defaultBlockTime = isSagaChain ? 2 : 12;
-
-      setAvgBlockTime(defaultBlockTime);
-      return defaultBlockTime;
-    }
-  };
 
   useEffect(() => {
     // Skip main data fetching if a specific DataBank feed is selected
@@ -843,7 +1020,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         
         const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
           ? "https://sagaevm.jsonrpc.sagarpc.io" // Correct Saga EVM RPC
-          : "https://eth-sepolia.g.alchemy.com/v2/c9C61uwd-LHombk09TFBRF-NGhNI75JX";
+          : "https://rpc.sepolia.org";
         
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const contractABI = getContractABI(contractAddress);
@@ -887,7 +1064,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         setLoading(false);
         setFeedLoading(false); // Stop feed loading when main data fetch completes
       } catch (err) {
-        setError(err.message || 'Failed to fetch data');
+          setError(err.message || 'Failed to fetch data');
         setLoading(false);
         setFeedLoading(false); // Stop feed loading on error
       }
@@ -911,6 +1088,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       currentValueRef.current = [];
       setCurrentFeed(selectedDataBankFeed);
       setPage(1); // Reset to first page
+      setLoadedTransactions(0);
+      setTotalTransactions(0);
+      setHasMoreTransactions(false);
+      setLoadedPages(1);
     }
     
     // Prevent duplicate fetches for the same feed if data already exists
@@ -939,23 +1120,25 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         // Reset initial fetch flag for new feed
         setInitialFetchComplete(false);
         
-        // Calculate average block time if toggle is enabled (same as Tellor feeds)
+        // Calculate average block time if toggle is enabled and not already cached
         let currentBlockTime = avgBlockTime;
-        if (includeBlockTime) {
+        if (includeBlockTime && avgBlockTime === 0) {
+          try {
           const blockTime = await calculateAverageBlockTime(provider, contractAddress);
           // Update state and also use the value directly
           setAvgBlockTime(blockTime);
           currentBlockTime = blockTime;
+          } catch (error) {
+            console.warn('Failed to calculate block time, using 0:', error.message);
+            currentBlockTime = 0;
+          }
         }
         
-        const data = await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken, currentBlockTime);
+        await fetchDataBankData(contract, provider, selectedDataBankFeed, cancellationToken, currentBlockTime);
         
         setLoading(false);
         setFeedLoading(false);
         setError(null);
-        
-        // Store the initial transaction count for this feed BEFORE setting up auto-refresh
-        const initialCount = await contract.getAggregateValueCount(DATABANK_PRICE_PAIRS[selectedDataBankFeed]);
         
         // Mark initial fetch as complete for this feed
         setInitialFetchComplete(true);
@@ -994,20 +1177,17 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             
             // Only fetch if there are actually new transactions
             if (currentCountNum > localTransactionCount) {
-              const newTransactionCount = currentCountNum - localTransactionCount;
               
-              // Recalculate block time if toggle is enabled (same as Tellor feeds)
+              // Recalculate block time if toggle is enabled and not already cached
               let currentRefreshBlockTime = avgBlockTime;
-
-
-
-              
-              if (includeBlockTime) {
+              if (includeBlockTime && avgBlockTime === 0) {
+                try {
                 const blockTime = await calculateAverageBlockTime(provider, contractAddress);
                 currentRefreshBlockTime = blockTime;
-
-              } else {
-
+                  setAvgBlockTime(blockTime);
+                } catch (error) {
+                  console.warn('Failed to calculate block time in refresh, using cached value:', error.message);
+                }
               }
               
 
@@ -1086,10 +1266,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             setInitialFetchComplete(false);
             setIsIncrementalLoading(false);
             setPage(1); // Reset to first page
+      setLoadedTransactions(0);
+      setTotalTransactions(0);
+      setHasMoreTransactions(false);
+      setLoadedPages(1);
           }
         };
       } catch (error) {
-        setError(error.message || 'Failed to fetch selected feed data');
+          setError(error.message || 'Failed to fetch selected feed data');
         setLoading(false);
         setFeedLoading(false);
         setIsIncrementalLoading(false);
@@ -1338,20 +1522,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       setCurrentFeed(null);
       setFeedLoading(false);
       setPage(1); // Reset to first page
+      setLoadedTransactions(0);
+      setTotalTransactions(0);
+      setHasMoreTransactions(false);
+      setLoadedPages(1);
     };
   }, []);
-
-  const handleAddressSubmit = (e) => {
-    e.preventDefault();
-    if (ethers.isAddress(inputAddress)) {
-      setContractAddress(inputAddress);
-      setError(null);
-      // Reset page when switching contracts
-      setPage(1);
-    } else {
-      setError('Invalid Ethereum address');
-    }
-  };
 
   const handlePageChange = (event, newPage) => {
     setPage(newPage);
@@ -2250,13 +2426,13 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         
                         setFeedLoading(true); // Start loading immediately
                         
-                        // Clear DataBank feed selection immediately
-                        setSelectedDataBankFeed(null);
+                        // Use DataBank ETH/USD feed instead of Tellor to avoid API limits
+                        setSelectedDataBankFeed('ETH/USD');
                         
-                        // Set contract states
-                        setIsDataBankContract(false);
-                        setContractAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
-                        setInputAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                        // Set contract states to DataBank
+                        setIsDataBankContract(true);
+                        setContractAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
+                        setInputAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
                         
                         // Clear current data immediately to show loading state
                         setCurrentValue([]);
@@ -2276,9 +2452,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       minWidth: '110px',
                     padding: '8px 16px',
                         textTransform: 'none',
-                        fontWeight: (!isDataBankContract && !selectedDataBankFeed) ? 'bold' : 'normal',
-                        backgroundColor: (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent',
-                        color: (!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353',
+                        fontWeight: (selectedDataBankFeed === 'ETH/USD') ? 'bold' : 'normal',
+                        backgroundColor: (selectedDataBankFeed === 'ETH/USD') ? '#0E5353' : 'transparent',
+                        color: (selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353',
                         border: `2px solid #0E5353`,
                       borderRadius: '4px',
                       cursor: feedLoading ? 'not-allowed' : 'pointer',
@@ -2796,26 +2972,58 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   )}
                 </Grid>
                 
-                {/* Pagination */}
+                {/* Pagination and Load More Controls */}
                 <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                   {!feedLoading && (
-                    <Pagination 
-                      count={Math.ceil((currentValue?.length || 0) / rowsPerPage)}
-                      page={page}
-                      onChange={handlePageChange}
-                      sx={{
-                        '& .MuiPaginationItem-root': {
-                          color: '#0E5353',
-                        },
-                        '& .MuiPaginationItem-page.Mui-selected': {
-                          backgroundColor: '#0E5353',
-                          color: 'white',
-                          '&:hover': {
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      {/* Pagination Controls */}
+                      {loadedPages > 1 && (
+                        <Pagination 
+                          count={loadedPages}
+                          page={page}
+                          onChange={handlePageChange}
+                          sx={{
+                            '& .MuiPaginationItem-root': {
+                              color: '#0E5353',
+                            },
+                            '& .MuiPaginationItem-page.Mui-selected': {
+                              backgroundColor: '#0E5353',
+                              color: 'white',
+                              '&:hover': {
+                                backgroundColor: '#0E5353',
+                              }
+                            }
+                          }}
+                        />
+                      )}
+                      
+                      {/* Load More Button */}
+                      {hasMoreTransactions && (
+                        <Button
+                          variant="contained"
+                          onClick={isDataBankContract && selectedDataBankFeed ? loadMoreTransactions : loadMoreTellorTransactions}
+                          disabled={isIncrementalLoading}
+                          sx={{
                             backgroundColor: '#0E5353',
-                          }
-                        }
-                      }}
-                    />
+                            color: 'white',
+                            '&:hover': {
+                              backgroundColor: '#0a3d3d',
+                            },
+                            '&:disabled': {
+                              backgroundColor: '#666',
+                            }
+                          }}
+                        >
+                          {isIncrementalLoading ? 'Loading...' : `Load More (${loadedTransactions}/${totalTransactions})`}
+                        </Button>
+                      )}
+                      
+                      {/* Status Text */}
+                      <Typography variant="body2" color="text.secondary">
+                        Showing {loadedTransactions} of {totalTransactions} transactions
+                        {loadedPages > 1 && ` • Page ${page} of ${loadedPages}`}
+                      </Typography>
+                    </Box>
                   )}
                 </Grid>
               </Grid>
