@@ -67,7 +67,8 @@ const DATABANK_PRICE_PAIRS = {
   'stATOM/USD': '0x611fd0e88850bf0cc036d96d04d47605c90b993485c2971e022b5751bbb04f23',
   'vyUSD/USD': '0x91513b15db3cef441d52058b24412957f9cc8645c53aecf39446ac9b0d2dcca4',
   'sUSN/USD': '0x187f74d310dc494e6efd928107713d4229cd319c2cf300224de02776090809f1',
-  'sfrxUSD/USD': '0xab30caa3e7827a27c153063bce02c0b260b29c0c164040c003f0f9ec66002510'
+  'sfrxUSD/USD': '0xab30caa3e7827a27c153063bce02c0b260b29c0c164040c003f0f9ec66002510',
+  'yETH/USD': '0x9874c1c7b7e76b78afdfdda6dcecef56edf6bf3d49d6d6ef2a98404ea2e04a59'
 };
 
 // Feed risk assessment mapping
@@ -88,7 +89,8 @@ const FEED_RISK_ASSESSMENT = {
   'stATOM/USD': 'moderate',    // 2 bars
   'vyUSD/USD': 'moderate',     // 2 bars
   'sUSN/USD': 'high',      // 1 bars
-  'sfrxUSD/USD': 'high'    // 1 bars
+  'sfrxUSD/USD': 'high',    // 1 bars
+  'yETH/USD': 'high'    // 1 bars
 };
 
 // Risk level to bar count mapping
