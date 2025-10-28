@@ -100,6 +100,51 @@ const RISK_BAR_COUNT = {
   'high': 1
 };
 
+// Feed type mapping
+const FEED_TYPE = {
+  'BTC/USD': 'market',
+  'ETH/USD': 'market',
+  'SAGA/USD': 'market',
+  'USDC/USD': 'market',
+  'USDT/USD': 'market',
+  'USDN/USD': 'market',
+  'sUSDS/USD': 'market',
+  'yUSD/USD': 'market',
+  'tBTC/USD': 'market',
+  'rETH/USD': 'mix',
+  'wstETH/USD': 'mix',
+  'KING/USD': 'mix',
+  'sUSDe/USD': 'market',
+  'stATOM/USD': 'market',
+  'sfrxUSD/USD': 'fundamental',
+  'sUSN/USD': 'market',
+  'vyUSD/USD': 'fundamental',
+  'yETH/USD': 'fundamental'
+};
+
+// Feed tooltip descriptions
+const FEED_TOOLTIP = {
+  'BTC/USD': 'market (7 sources)',
+  'ETH/USD': 'market (7 sources)',
+  'SAGA/USD': 'market (4 sources)',
+  'USDC/USD': 'market (7 sources)',
+  'USDT/USD': 'market (3 sources)',
+  'FBTC/USD': 'market (3 sources)',
+  'USDN/USD': 'market (2 sources)',
+  'sUSDS/USD': 'market (1 source)',
+  'yUSD/USD': 'market (2 sources)',
+  'tBTC/USD': 'market (3 sources)',
+  'rETH/USD': 'mix (fundamental as part of median)',
+  'wstETH/USD': 'mix (fundamental as part of median)',
+  'KING/USD': 'mix (fundamental as part of median)',
+  'sUSDe/USD': 'market (2 sources)',
+  'stATOM/USD': 'market (3 sources)',
+  'sfrxUSD/USD': 'fundamental sfrxUSD/frxUSD ratio × market median frxUSD/USD price',
+  'sUSN/USD': 'market (1 source)',
+  'vyUSD/USD': 'fundamental vyUSD/USDC ratio × market median USDC/USD price',
+  'yETH/USD': 'fundamental yeth/eth ratio × market median eth/usd price'
+};
+
 const DataFeed = () => {
   // Helper functions for time string parsing and formatting
   const parseTimeString = (timeStr) => {
@@ -143,6 +188,49 @@ const DataFeed = () => {
       const remainingSeconds = seconds % 60;
       return `${hours}h ${minutes}m ${remainingSeconds.toFixed(1)}s`;
     }
+  };
+
+  const getFeedTypeSymbol = (feedName, color = '#0E5353') => {
+    const feedType = FEED_TYPE[feedName];
+    const tooltipText = FEED_TOOLTIP[feedName] || '';
+    
+    if (!feedType) return null;
+    
+    let symbolStyle = {};
+    if (feedType === 'market') {
+      symbolStyle = {
+        width: 0,
+        height: 0,
+        borderLeft: '4px solid transparent',
+        borderRight: '4px solid transparent',
+        borderBottom: `7px solid ${color}`,
+        flexShrink: 0
+      };
+    } else if (feedType === 'fundamental') {
+      symbolStyle = {
+        width: '7px',
+        height: '7px',
+        borderRadius: '50%',
+        backgroundColor: color,
+        flexShrink: 0
+      };
+    } else if (feedType === 'mix') {
+      symbolStyle = {
+        width: '7px',
+        height: '7px',
+        borderStyle: 'solid',
+        borderWidth: '2px',
+        borderColor: color,
+        backgroundColor: color,
+        flexShrink: 0
+      };
+    }
+    
+    return (
+      <Tooltip title={tooltipText} placement="top" arrow>
+        <div style={symbolStyle} />
+      </Tooltip>
+    );
   };
 
   const [currentValue, setCurrentValue] = useState([]);
@@ -2404,8 +2492,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           <div className="price-feeds-container">
             {/* Feed Selection - Responsive Layout */}
             <div style={{ display: 'flex', gap: '24px', justifyContent: 'space-between' }}>
-              {/* Left Side - Feed Sections */}
-              <div style={{ display: 'flex', gap: '40px', flex: '0 0 auto' }}>
+              {/* Left Side - Feed Sections Stacked Vertically */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: '0 0 auto' }}>
                 {/* Ethereum Feeds */}
                 <div>
                   <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
@@ -2501,13 +2589,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                                   width: '6px',
                                   height: '2px',
                                   backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
-                                    ? ((!isDataBankContract && !selectedDataBankFeed) ? 'white' : '#0E5353')
+                                    ? ((selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353')
                                     : 'rgba(255,255,255,0.3)',
                                   borderRadius: '1px'
                                 }}
                               />
                             ))}
                           </div>
+                          {getFeedTypeSymbol('ETH/USD', (selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353')}
                           <span>ETH/USD</span>
                         </div>
                       )}
@@ -2624,13 +2713,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                                   width: '6px',
                                   height: '2px',
                                   backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[selected] || 'high'] 
-                                    ? '#0E5353'
-                                    : 'rgba(14,83,83,0.3)',
+                                    ? 'white'
+                                    : 'rgba(255,255,255,0.3)',
                                   borderRadius: '1px'
                                 }}
                               />
                             ))}
                           </div>
+                          {getFeedTypeSymbol(selected, 'white')}
                           <span>{selected}</span>
                         </div>
                       );
@@ -2669,6 +2759,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                               />
                             ))}
                           </div>
+                          {getFeedTypeSymbol(pairName, '#0E5353')}
                           <span>{pairName}</span>
                         </div>
                       </MenuItem>
@@ -2678,134 +2769,197 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 </div>
               </div>
               
-              {/* Right Side - Best Practices Rating Legend */}
-              <div style={{ 
-                padding: '12px 16px', 
-                backgroundColor: 'rgba(14, 83, 83, 0.05)', 
-                borderRadius: '6px',
-                border: '1px solid rgba(14, 83, 83, 0.1)',
-                width: 'fit-content',
-                alignSelf: 'flex-end'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <Typography variant="caption" sx={{ 
-                    color: '#0E5353', 
-                    fontWeight: 'bold', 
-                    fontSize: '11px'
-                  }}>
-                    'Best Practices' Rating:
-                  </Typography>
-                  <Tooltip
-                    title={
-                      <div style={{ padding: '12px', textAlign: 'center' }}>
-                        <img 
-                          src="/BPR.png" 
-                          alt="Best Practices Rating Chart"
-                          style={{ 
-                            maxWidth: '800px', 
-                            width: '100%', 
-                            height: 'auto',
-                            borderRadius: '6px',
-                            display: 'block'
-                          }}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'block';
-                          }}
-                        />
-                        <div style={{ 
-                          display: 'none', 
-                          color: 'white', 
-                          fontSize: '14px', 
-                          padding: '20px',
-                          textAlign: 'center'
-                        }}>
-                          Best Practices Rating Chart<br/>
-                          <span style={{ fontSize: '12px', opacity: 0.8 }}>
-                            (Add Best-practices-Rating.png to public folder)
-                          </span>
+              {/* Right Side - Legends Stacked */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignSelf: 'flex-end' }}>
+                {/* Best Practices Rating Legend */}
+                <div style={{ 
+                  padding: '12px 16px', 
+                  backgroundColor: 'rgba(14, 83, 83, 0.05)', 
+                  borderRadius: '6px',
+                  border: '1px solid rgba(14, 83, 83, 0.1)',
+                  width: 'fit-content'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Typography variant="caption" sx={{ 
+                      color: '#0E5353', 
+                      fontWeight: 'bold', 
+                      fontSize: '11px'
+                    }}>
+                      'Best Practices' Rating:
+                    </Typography>
+                    <Tooltip
+                      title={
+                        <div style={{ padding: '12px', textAlign: 'center' }}>
+                          <img 
+                            src="/BPR.png" 
+                            alt="Best Practices Rating Chart"
+                            style={{ 
+                              maxWidth: '800px', 
+                              width: '100%', 
+                              height: 'auto',
+                              borderRadius: '6px',
+                              display: 'block'
+                            }}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'block';
+                            }}
+                          />
+                          <div style={{ 
+                            display: 'none', 
+                            color: 'white', 
+                            fontSize: '14px', 
+                            padding: '20px',
+                            textAlign: 'center'
+                          }}>
+                            Best Practices Rating Chart<br/>
+                            <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                              (Add Best-practices-Rating.png to public folder)
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    }
-                    placement="bottom"
-                    arrow
-                    componentsProps={{
-                      tooltip: {
-                        sx: {
-                          bgcolor: 'rgba(0, 0, 0, 0.9)',
-                          maxWidth: '850px',
-                          '& .MuiTooltip-arrow': {
-                            color: 'rgba(0, 0, 0, 0.9)',
+                      }
+                      placement="bottom"
+                      arrow
+                      componentsProps={{
+                        tooltip: {
+                          sx: {
+                            bgcolor: 'rgba(0, 0, 0, 0.9)',
+                            maxWidth: '850px',
+                            '& .MuiTooltip-arrow': {
+                              color: 'rgba(0, 0, 0, 0.9)',
+                            },
                           },
                         },
-                      },
-                    }}
-                  >
-                    <InfoOutlined sx={{ 
-                      fontSize: '14px', 
-                      color: '#0E5353', 
-                      cursor: 'help',
-                      opacity: 0.7,
-                      '&:hover': {
-                        opacity: 1
-                      }
-                    }} />
-                  </Tooltip>
+                      }}
+                    >
+                      <InfoOutlined sx={{ 
+                        fontSize: '14px', 
+                        color: '#0E5353', 
+                        cursor: 'help',
+                        opacity: 0.7,
+                        '&:hover': {
+                          opacity: 1
+                        }
+                      }} />
+                    </Tooltip>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column-reverse',
+                        gap: '1px', 
+                        height: '8px'
+                      }}>
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <div key={i} style={{
+                            width: '6px',
+                            height: '2px',
+                            backgroundColor: '#0E5353',
+                            borderRadius: '1px'
+                          }} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#0E5353' }}>Exemplary</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column-reverse',
+                        gap: '1px', 
+                        height: '8px'
+                      }}>
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <div key={i} style={{
+                            width: '6px',
+                            height: '2px',
+                            backgroundColor: i < 2 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                            borderRadius: '1px'
+                          }} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#0E5353' }}>Moderate</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column-reverse',
+                        gap: '1px', 
+                        height: '8px'
+                      }}>
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <div key={i} style={{
+                            width: '6px',
+                            height: '2px',
+                            backgroundColor: i < 1 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
+                            borderRadius: '1px'
+                          }} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#0E5353' }}>High Risk</span>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexDirection: 'column-reverse',
-                      gap: '1px', 
-                      height: '8px'
+
+                {/* Feed Types Legend */}
+                <div style={{ 
+                  padding: '12px 16px', 
+                  backgroundColor: 'rgba(14, 83, 83, 0.05)', 
+                  borderRadius: '6px',
+                  border: '1px solid rgba(14, 83, 83, 0.1)',
+                  width: 'fit-content'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <Typography variant="caption" sx={{ 
+                      color: '#0E5353', 
+                      fontWeight: 'bold', 
+                      fontSize: '11px'
                     }}>
-                      {Array.from({ length: 3 }, (_, i) => (
-                        <div key={i} style={{
-                          width: '6px',
-                          height: '2px',
-                          backgroundColor: '#0E5353',
-                          borderRadius: '1px'
-                        }} />
-                      ))}
-                    </div>
-                    <span style={{ fontSize: '10px', color: '#0E5353' }}>Exemplary</span>
+                      Feed Types:
+                    </Typography>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexDirection: 'column-reverse',
-                      gap: '1px', 
-                      height: '8px'
-                    }}>
-                      {Array.from({ length: 3 }, (_, i) => (
-                        <div key={i} style={{
-                          width: '6px',
-                          height: '2px',
-                          backgroundColor: i < 2 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
-                          borderRadius: '1px'
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'nowrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ 
+                          width: 0,
+                          height: 0,
+                          borderLeft: '4px solid transparent',
+                          borderRight: '4px solid transparent',
+                          borderBottom: '7px solid #0E5353'
                         }} />
-                      ))}
+                        <span style={{ fontSize: '10px', color: '#0E5353' }}>market</span>
+                      </div>
                     </div>
-                    <span style={{ fontSize: '10px', color: '#0E5353' }}>Moderate</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexDirection: 'column-reverse',
-                      gap: '1px', 
-                      height: '8px'
-                    }}>
-                      {Array.from({ length: 3 }, (_, i) => (
-                        <div key={i} style={{
-                          width: '6px',
-                          height: '2px',
-                          backgroundColor: i < 1 ? '#0E5353' : 'rgba(14, 83, 83, 0.3)',
-                          borderRadius: '1px'
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ 
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: '#0E5353'
                         }} />
-                      ))}
+                        <span style={{ fontSize: '10px', color: '#0E5353' }}>fundamental</span>
+                      </div>
+                      <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>(on-chain exchange rate)</span>
+                      <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>×</span>
+                      <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>(market price of underlying asset)</span>
                     </div>
-                    <span style={{ fontSize: '10px', color: '#0E5353' }}>High Risk</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '-70px' }}>
+                        <div style={{ 
+                          width: '8px',
+                          height: '8px',
+                          borderStyle: 'solid',
+                          borderWidth: '2px',
+                          borderColor: '#0E5353',
+                          backgroundColor: '#0E5353'
+                        }} />
+                        <span style={{ fontSize: '10px', color: '#0E5353' }}>mix</span>
+                      </div>
+                      <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>(on-chain exchange rate included in median)</span>
+                    </div>
                   </div>
                 </div>
               </div>
