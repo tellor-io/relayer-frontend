@@ -238,8 +238,8 @@ const DataFeed = () => {
   const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
   const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
-  const [contractAddress, setContractAddress] = useState('0x6f250229af8D83c51500f3565b10E93d8907B644');
-  const [inputAddress, setInputAddress] = useState('0x6f250229af8D83c51500f3565b10E93d8907B644');
+  const [contractAddress, setContractAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+  const [inputAddress, setInputAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
   const [loadedTransactions, setLoadedTransactions] = useState(0);
@@ -251,8 +251,8 @@ const DataFeed = () => {
   const [avgBlockTime, setAvgBlockTime] = useState(0);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [isDataBankContract, setIsDataBankContract] = useState(true);
-  const [selectedDataBankFeed, setSelectedDataBankFeed] = useState('ETH/USD');
+  const [isDataBankContract, setIsDataBankContract] = useState(false);
+  const [selectedDataBankFeed, setSelectedDataBankFeed] = useState(null);
   // Add new state for incremental loading
   const [isIncrementalLoading, setIsIncrementalLoading] = useState(false);
   // Add render key to force re-renders
@@ -273,7 +273,7 @@ const DataFeed = () => {
     if (address.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
       return DataBankABI.abi;
     }
-    return TellorABI;
+    return TellorABI; // TellorABI is already an array, not an object with .abi
   };
 
     // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
@@ -595,10 +595,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     try {
         // Get ETH/USD query ID - using the same one from DataBank for consistency
         const ethUsdQueryId = '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992';
+        console.log('Fetching Tellor data for queryId:', ethUsdQueryId);
         
         // Get the count of available data points
         const count = await contract.getAggregateValueCount(ethUsdQueryId);
         const countNum = Number(count);
+        console.log('Count:', countNum);
         
         if (countNum === 0) {
           // Let's try to get current data instead
@@ -814,12 +816,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       
       const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
         ? "https://sagaevm.jsonrpc.sagarpc.io"
-        : "https://rpc.sepolia.org";
+        : "https://ethereum-sepolia-rpc.publicnode.com";
       
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(
         contractAddress,
-        TellorABI.abi,
+        TellorABI, // TellorABI is already an array
         provider
       );
       
@@ -1110,7 +1112,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         
         const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
           ? "https://sagaevm.jsonrpc.sagarpc.io" // Correct Saga EVM RPC
-          : "https://rpc.sepolia.org";
+          : "https://ethereum-sepolia-rpc.publicnode.com"; // Sepolia public RPC
         
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const contractABI = getContractABI(contractAddress);
@@ -1136,6 +1138,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           try {
             processedData = await fetchTellorData(contract, provider);
           } catch (error) {
+            console.error('Tellor fetch error:', error);
             processedData = [];
           }
         }
@@ -2516,13 +2519,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         
                         setFeedLoading(true); // Start loading immediately
                         
-                        // Use DataBank ETH/USD feed instead of Tellor to avoid API limits
-                        setSelectedDataBankFeed('ETH/USD');
-                        
-                        // Set contract states to DataBank
-                        setIsDataBankContract(true);
-                        setContractAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
-                        setInputAddress('0x6f250229af8D83c51500f3565b10E93d8907B644');
+                        // Use Sepolia Tellor contract
+                        setSelectedDataBankFeed(null);
+                        setIsDataBankContract(false);
+                        setContractAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                        setInputAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
                         
                         // Clear current data immediately to show loading state
                         setCurrentValue([]);
@@ -2542,9 +2543,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       minWidth: '110px',
                     padding: '8px 16px',
                         textTransform: 'none',
-                        fontWeight: (selectedDataBankFeed === 'ETH/USD') ? 'bold' : 'normal',
-                        backgroundColor: (selectedDataBankFeed === 'ETH/USD') ? '#0E5353' : 'transparent',
-                        color: (selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353',
+                        fontWeight: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353',
                         border: `2px solid #0E5353`,
                       borderRadius: '4px',
                       cursor: feedLoading ? 'not-allowed' : 'pointer',
@@ -2553,17 +2554,17 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         opacity: feedLoading ? 0.6 : 1
                       }}
                       onMouseEnter={(e) => {
-                        if (!feedLoading) {
-                          e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'rgba(14, 83, 83, 0.1)';
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a')) {
+                          e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (!feedLoading) {
-                          e.target.style.backgroundColor = (!isDataBankContract && !selectedDataBankFeed) ? '#0E5353' : 'transparent';
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a')) {
+                          e.target.style.backgroundColor = 'transparent';
                         }
                       }}
                     >
-                      {feedLoading && !selectedDataBankFeed ? (
+                      {feedLoading && selectedDataBankFeed ? (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                           <CircularProgress size={12} style={{ color: 'white' }} />
                           <span>Loading...</span>
@@ -2589,14 +2590,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                                   width: '6px',
                                   height: '2px',
                                   backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
-                                    ? ((selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353')
+                                    ? ((!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353')
                                     : 'rgba(255,255,255,0.3)',
                                   borderRadius: '1px'
                                 }}
                               />
                             ))}
                           </div>
-                          {getFeedTypeSymbol('ETH/USD', (selectedDataBankFeed === 'ETH/USD') ? 'white' : '#0E5353')}
+                          {getFeedTypeSymbol('ETH/USD', (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353')}
                           <span>ETH/USD</span>
                         </div>
                       )}
@@ -2643,14 +2644,20 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       },
                     },
                     '& .MuiSelect-icon': {
-                      color: '#0E5353',
+                      color: selectedDataBankFeed ? 'white' : '#0E5353',
                     }
                   }}
                 >
-                  <InputLabel sx={{ color: '#0E5353' }}>Select Feed</InputLabel>
+                  <InputLabel sx={{ color: selectedDataBankFeed ? 'white' : '#0E5353', display: 'none' }}>Select Feed</InputLabel>
                   <Select
                     value={selectedDataBankFeed || ''}
                     label="Select Saga Feed"
+                    sx={{
+                      '& .MuiSelect-select': {
+                        backgroundColor: selectedDataBankFeed ? '#0E5353' : 'transparent',
+                        color: selectedDataBankFeed ? 'white' : '#0E5353',
+                      },
+                    }}
                     onChange={(e) => {
                       const selectedFeed = e.target.value;
                       if (feedLoading) return;
@@ -2759,7 +2766,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                               />
                             ))}
                           </div>
-                          {getFeedTypeSymbol(pairName, '#0E5353')}
+                          {getFeedTypeSymbol(pairName, 'white')}
                           <span>{pairName}</span>
                         </div>
                       </MenuItem>
@@ -2916,7 +2923,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       fontWeight: 'bold', 
                       fontSize: '11px'
                     }}>
-                      Feed Types:
+                      Feed Types (hover over each feed's symbol for more details):
                     </Typography>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'nowrap' }}>
