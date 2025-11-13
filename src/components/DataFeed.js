@@ -17,9 +17,18 @@ import {
   FormControl,
   InputLabel,
   Tooltip,
-  Button
+  Button,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper
 } from '@mui/material';
-import { InfoOutlined } from '@mui/icons-material';
+import { InfoOutlined, ArrowUpward, ArrowDownward } from '@mui/icons-material';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -48,6 +57,24 @@ ChartJS.register(
 
 const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io/address/";
 const DATABANK_CONTRACT_ADDRESS = "0x6f250229af8D83c51500f3565b10E93d8907B644";
+const SEPOLIA_CONTRACT_ADDRESS = "0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a";
+const BASE_CONTRACT_ADDRESS = "0x5589e306b1920F009979a50B88caE32aecD471E4";
+const SEPOLIA_RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com";
+const BASE_RPC_URL = "https://base-mainnet.public.blastapi.io";
+const SAGA_RPC_URL = "https://sagaevm.jsonrpc.sagarpc.io";
+
+// Sepolia Tellor feed queryIds
+const SEPOLIA_QUERY_IDS = {
+  'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',
+  'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
+};
+
+// Base Tellor feed queryIds
+const BASE_QUERY_IDS = {
+  'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',
+  'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
+  'TRB/USD': '0x5c13cd9c97dbb98f2429c101a2a8150e6c7a0ddaff6124ee176a3a411067ded0',
+};
 
 // DataBank price pair queryIds (these are the specific feeds we want)
 const DATABANK_PRICE_PAIRS = {
@@ -75,6 +102,7 @@ const DATABANK_PRICE_PAIRS = {
 const FEED_RISK_ASSESSMENT = {
   'BTC/USD': 'exemplary',      // 3 bars
   'ETH/USD': 'exemplary',      // 3 bars
+  'TRB/USD': 'moderate',       // 2 bars
   'SAGA/USD': 'moderate',      // 2 bars
   'USDC/USD': 'moderate',      // 2 bars
   'USDT/USD': 'moderate',      // 2 bars
@@ -104,6 +132,7 @@ const RISK_BAR_COUNT = {
 const FEED_TYPE = {
   'BTC/USD': 'market',
   'ETH/USD': 'market',
+  'TRB/USD': 'market',
   'SAGA/USD': 'market',
   'USDC/USD': 'market',
   'USDT/USD': 'market',
@@ -126,6 +155,7 @@ const FEED_TYPE = {
 const FEED_TOOLTIP = {
   'BTC/USD': 'market (7 sources)',
   'ETH/USD': 'market (7 sources)',
+  'TRB/USD': 'market',
   'SAGA/USD': 'market (4 sources)',
   'USDC/USD': 'market (7 sources)',
   'USDT/USD': 'market (3 sources)',
@@ -143,6 +173,33 @@ const FEED_TOOLTIP = {
   'sUSN/USD': 'market (1 source)',
   'vyUSD/USD': 'fundamental vyUSD/USDC ratio × market median USDC/USD price',
   'yETH/USD': 'fundamental yeth/eth ratio × market median eth/usd price'
+};
+
+// Deviation Threshold mapping
+const DEVIATION_THRESHOLD = {
+  'ATOM/USD': '2.00%',
+  'BTC/USD': '1.00%',
+  'ETH/USD': '1.00%',
+  'TRB/USD': '2.00%',
+  'fBTC/USD': '0.25%',
+  'KING/USD': '2.00%',
+  'MUST/USD': '2.00%',
+  'rETH/USD': '2.00%',
+  'SAGA/USD': '2.00%',
+  'sfrxUSD/USD': '2.00%',
+  'sMUST/USD': '2.00%',
+  'stATOM/USD': '2.00%',
+  'sUSDe/USD': '2.00%',
+  'sUSDS/USD': '2.00%',
+  'sUSN/USD': '2.00%',
+  'tBTC/USD': '2.00%',
+  'USDC/USD': '0.50%',
+  'USDN/USD': '2.00%',
+  'USDT/USD': '0.50%',
+  'vyUSD/USD': '2.00%',
+  'wstETH/USD': '0.25%',
+  'yETH/USD': '2.00%',
+  'yUSD/USD': '2.00%'
 };
 
 const DataFeed = () => {
@@ -233,13 +290,340 @@ const DataFeed = () => {
     );
   };
 
+  // Function to get feed icon for various tokens
+  const getFeedIcon = (feedName, iconColor = null) => {
+    const iconStyle = { marginRight: '6px', flexShrink: 0 };
+    const size = iconColor === 'white' ? '14' : '16';
+    
+    // Bitcoin
+    if (feedName === 'BTC/USD' || feedName === 'tBTC/USD') {
+      if (iconColor === 'white') {
+        return (
+          <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+            <path d="M17.027 10.377c.26-1.737-1.06-2.67-2.864-3.293l.585-2.346-1.43-.356-.57 2.286c-.376-.094-.763-.182-1.147-.27l.574-2.301-1.43-.356-.585 2.346c-.31-.07-.615-.14-.91-.213l.002-.007-1.97-.492-.38 1.524s1.06.243 1.038.258c.58.145.684.53.666.835l-.667 2.674c.04.01.092.024.15.047l-.153-.038-.947 3.797c-.071.18-.252.45-.66.348.015.021-1.04-.26-1.04-.26l-.71 1.644 1.863.464c.346.086.684.177 1.015.26l-.59 2.365 1.428.356.585-2.345c.39.106.767.203 1.13.295l-.583 2.338 1.43.356.59-2.365c2.448.463 4.285.276 5.06-1.938.625-1.78-.031-2.807-1.32-3.477.94-.217 1.648-.835 1.838-2.11zm-2.958 4.08c-.444 1.78-3.45.82-4.424.578l.79-3.164c.974.243 4.1.723 3.634 2.586zm.472-4.99c-.405 1.625-2.91.8-3.723.597l.715-2.867c.813.203 3.44.58 3.008 2.27z" fill="white"/>
+          </svg>
+        );
+      }
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+          <path d="M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.243 15.525.362 9.105 1.963 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.117 8.738 14.546z" fill="#F7931A"/>
+          <path d="M17.027 10.377c.26-1.737-1.06-2.67-2.864-3.293l.585-2.346-1.43-.356-.57 2.286c-.376-.094-.763-.182-1.147-.27l.574-2.301-1.43-.356-.585 2.346c-.31-.07-.615-.14-.91-.213l.002-.007-1.97-.492-.38 1.524s1.06.243 1.038.258c.58.145.684.53.666.835l-.667 2.674c.04.01.092.024.15.047l-.153-.038-.947 3.797c-.071.18-.252.45-.66.348.015.021-1.04-.26-1.04-.26l-.71 1.644 1.863.464c.346.086.684.177 1.015.26l-.59 2.365 1.428.356.585-2.345c.39.106.767.203 1.13.295l-.583 2.338 1.43.356.59-2.365c2.448.463 4.285.276 5.06-1.938.625-1.78-.031-2.807-1.32-3.477.94-.217 1.648-.835 1.838-2.11zm-2.958 4.08c-.444 1.78-3.45.82-4.424.578l.79-3.164c.974.243 4.1.723 3.634 2.586zm.472-4.99c-.405 1.625-2.91.8-3.723.597l.715-2.867c.813.203 3.44.58 3.008 2.27z" fill="#FFF"/>
+        </svg>
+      );
+    }
+    
+    // Ethereum
+    if (feedName === 'ETH/USD') {
+      const fillColor = iconColor === 'white' ? 'white' : '#627EEA';
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+          <path d="M12 24C18.6274 24 24 18.6274 24 12C24 5.37258 18.6274 0 12 0C5.37258 0 0 5.37258 0 12C0 18.6274 5.37258 24 12 24Z" fill={fillColor}/>
+          <path d="M12.3735 3V9.6525L17.9963 12.165L12.3735 3Z" fill="white" fillOpacity="0.602"/>
+          <path d="M12.3735 3L6.75 12.165L12.3735 9.6525V3Z" fill="white"/>
+          <path d="M12.3735 16.476V20.9963L18 12.621L12.3735 16.476Z" fill="white" fillOpacity="0.602"/>
+          <path d="M12.3735 20.9963V16.4753L6.75 12.621L12.3735 20.9963Z" fill="white"/>
+          <path d="M12.3735 15.4298L17.9963 12.165L12.3735 9.654V15.4298Z" fill="white" fillOpacity="0.2"/>
+          <path d="M6.75 12.165L12.3735 15.4298V9.654L6.75 12.165Z" fill="white" fillOpacity="0.602"/>
+        </svg>
+      );
+    }
+    
+    // Rocket Pool ETH (rETH)
+    if (feedName === 'rETH/USD') {
+      return (
+        <img 
+          src="/reth-usd-logo.png" 
+          alt="rETH" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // Wrapped Staked ETH (wstETH)
+    if (feedName === 'wstETH/USD') {
+      return (
+        <img 
+          src="/wsteth-usd-logo.png" 
+          alt="wstETH" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // Yearn ETH (yETH)
+    if (feedName === 'yETH/USD') {
+      return (
+        <img 
+          src="/yeth-usd-logo.png" 
+          alt="yETH" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // USD Coin (USDC)
+    if (feedName === 'USDC/USD') {
+      const fillColor = iconColor === 'white' ? 'white' : '#2775CA';
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+          <circle cx="12" cy="12" r="12" fill={fillColor}/>
+          <path d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3ZM12.75 15.75C12.75 16.1642 12.4142 16.5 12 16.5C11.5858 16.5 11.25 16.1642 11.25 15.75V14.25H9.75C9.33579 14.25 9 13.9142 9 13.5C9 13.0858 9.33579 12.75 9.75 12.75H11.25V11.25H9.75C9.33579 11.25 9 10.9142 9 10.5C9 10.0858 9.33579 9.75 9.75 9.75H11.25V8.25C11.25 7.83579 11.5858 7.5 12 7.5C12.4142 7.5 12.75 7.83579 12.75 8.25V9.75H14.25C14.6642 9.75 15 10.0858 15 10.5C15 10.9142 14.6642 11.25 14.25 11.25H12.75V12.75H14.25C14.6642 12.75 15 13.0858 15 13.5C15 13.9142 14.6642 14.25 14.25 14.25H12.75V15.75Z" fill="white"/>
+        </svg>
+      );
+    }
+    
+    // Tether (USDT)
+    if (feedName === 'USDT/USD') {
+      const fillColor = iconColor === 'white' ? 'white' : '#26A17B';
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+          <circle cx="12" cy="12" r="12" fill={fillColor}/>
+          <path d="M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3ZM12.75 15.75C12.75 16.1642 12.4142 16.5 12 16.5C11.5858 16.5 11.25 16.1642 11.25 15.75V14.25H9.75C9.33579 14.25 9 13.9142 9 13.5C9 13.0858 9.33579 12.75 9.75 12.75H11.25V11.25H9.75C9.33579 11.25 9 10.9142 9 10.5C9 10.0858 9.33579 9.75 9.75 9.75H11.25V8.25C11.25 7.83579 11.5858 7.5 12 7.5C12.4142 7.5 12.75 7.83579 12.75 8.25V9.75H14.25C14.6642 9.75 15 10.0858 15 10.5C15 10.9142 14.6642 11.25 14.25 11.25H12.75V12.75H14.25C14.6642 12.75 15 13.0858 15 13.5C15 13.9142 14.6642 14.25 14.25 14.25H12.75V15.75Z" fill="white"/>
+        </svg>
+      );
+    }
+    
+    // Cosmos (ATOM)
+    if (feedName === 'stATOM/USD') {
+      const fillColor = iconColor === 'white' ? 'white' : '#2E3148';
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={iconStyle}>
+          <circle cx="12" cy="12" r="12" fill={fillColor}/>
+          <path d="M12 6L15.5 8.5L12 11L8.5 8.5L12 6ZM15.5 15.5L12 18L8.5 15.5L12 13L15.5 15.5ZM18.5 10.5L16 12L18.5 13.5L21 12L18.5 10.5ZM6 10.5L3.5 12L6 13.5L8.5 12L6 10.5Z" fill="white"/>
+        </svg>
+      );
+    }
+    
+    // Tellor (TRB)
+    if (feedName === 'TRB/USD') {
+      return (
+        <img 
+          src="/trb-usd-logo.png" 
+          alt="TRB" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // Neutrino USD (USDN)
+    if (feedName === 'USDN/USD') {
+      // Using PNG file from public folder
+      return (
+        <img 
+          src="/usdn-logo.png" 
+          alt="USDN" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // KING/USD
+    if (feedName === 'KING/USD') {
+      return (
+        <img 
+          src="/king-usd-logo.png" 
+          alt="KING" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // yUSD/USD
+    if (feedName === 'yUSD/USD') {
+      return (
+        <img 
+          src="/yusd-usd-logo.png" 
+          alt="yUSD" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // sUSN/USD
+    if (feedName === 'sUSN/USD') {
+      return (
+        <img 
+          src="/susn-usd-logo.png" 
+          alt="sUSN" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // sUSDS/USD
+    if (feedName === 'sUSDS/USD') {
+      return (
+        <img 
+          src="/susds-usd-logo.png" 
+          alt="sUSDS" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // SAGA/USD
+    if (feedName === 'SAGA/USD') {
+      return (
+        <img 
+          src="/saga-usd-logo.png" 
+          alt="SAGA" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // sUSDe/USD
+    if (feedName === 'sUSDe/USD') {
+      return (
+        <img 
+          src="/susde-usd-logo.png" 
+          alt="sUSDe" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // vyUSD/USD
+    if (feedName === 'vyUSD/USD') {
+      return (
+        <img 
+          src="/vyusd-usd-logo.png" 
+          alt="vyUSD" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    // sfrxUSD/USD
+    if (feedName === 'sfrxUSD/USD') {
+      return (
+        <img 
+          src="/sfrxusd-usd-logo.png" 
+          alt="sfrxUSD" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    return null;
+  };
+
+  // Function to get network icon
+  const getNetworkIcon = (network, size = 20) => {
+    const iconStyle = {
+      marginRight: '8px',
+      verticalAlign: 'middle',
+      display: 'inline-block'
+    };
+
+    if (network === 'Sepolia') {
+      return (
+        <img 
+          src="/sepolia-logo.png" 
+          alt="Sepolia" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    if (network === 'Base') {
+      return (
+        <img 
+          src="/base-mainnet-logo.png" 
+          alt="Base" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    if (network === 'Saga') {
+      return (
+        <img 
+          src="/saga-mainnet-logo.png" 
+          alt="Saga" 
+          width={size} 
+          height={size} 
+          style={iconStyle}
+        />
+      );
+    }
+    
+    return null;
+  };
+
+  // Function to calculate heartbeat countdown (4 hours from reported time)
+  const calculateHeartbeat = (reportedTimestamp) => {
+    try {
+      // heartbeatTick ensures this recalculates every second
+      const _ = heartbeatTick; // eslint-disable-line no-unused-vars
+      const reportedDate = new Date(reportedTimestamp);
+      const now = new Date();
+      const elapsed = Math.floor((now - reportedDate) / 1000); // seconds elapsed
+      const fourHours = 4 * 60 * 60; // 4 hours in seconds
+      const remaining = fourHours - elapsed;
+      
+      if (remaining <= 0) {
+        // Calculate negative time (how long it's been over the heartbeat)
+        const overTime = Math.abs(remaining);
+        const hours = Math.floor(overTime / 3600);
+        const minutes = Math.floor((overTime % 3600) / 60);
+        const seconds = overTime % 60;
+        // Format as -HH:MM:SS
+        const text = `-${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        return { text, expired: true };
+      }
+      
+      const hours = Math.floor(remaining / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+      const seconds = remaining % 60;
+      
+      // Format as HH:MM:SS
+      const text = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      
+      return { text, expired: false };
+    } catch (error) {
+      return { text: 'N/A', expired: false };
+    }
+  };
+
   const [currentValue, setCurrentValue] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [overviewData, setOverviewData] = useState([]); // Separate state for Overview tab
+  const [loading, setLoading] = useState(false); // Start as false since Overview tab (default) uses feedLoading
   const [feedLoading, setFeedLoading] = useState(false); // New state for feed selection loading
   const [error, setError] = useState(null);
   const [currentFeed, setCurrentFeed] = useState(null); // Track current feed being processed
-  const [contractAddress, setContractAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
-  const [inputAddress, setInputAddress] = useState('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+  const [contractAddress, setContractAddress] = useState(SEPOLIA_CONTRACT_ADDRESS);
+  const [inputAddress, setInputAddress] = useState(SEPOLIA_CONTRACT_ADDRESS);
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
   const [loadedTransactions, setLoadedTransactions] = useState(0);
@@ -247,12 +631,17 @@ const DataFeed = () => {
   const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
   const [loadedPages, setLoadedPages] = useState(1); // Track how many pages we've loaded
   const [timeScale, setTimeScale] = useState('recent'); // 'recent', 'daily', 'weekly', or 'custom'
-  const [includeBlockTime, setIncludeBlockTime] = useState(false);
+  const [includeBlockTime, setIncludeBlockTime] = useState(true);
   const [avgBlockTime, setAvgBlockTime] = useState(0);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [isDataBankContract, setIsDataBankContract] = useState(false);
   const [selectedDataBankFeed, setSelectedDataBankFeed] = useState(null);
+  const [selectedSepoliaFeed, setSelectedSepoliaFeed] = useState('ETH/USD'); // Track which Sepolia feed is selected
+  const [selectedBaseFeed, setSelectedBaseFeed] = useState('ETH/USD'); // Track which Base feed is selected
+  // Add state for overview table sorting
+  const [overviewSortColumn, setOverviewSortColumn] = useState('network'); // 'feed' or 'network'
+  const [overviewSortDirection, setOverviewSortDirection] = useState('asc'); // 'asc' or 'desc'
   // Add new state for incremental loading
   const [isIncrementalLoading, setIsIncrementalLoading] = useState(false);
   // Add render key to force re-renders
@@ -261,12 +650,14 @@ const DataFeed = () => {
   const [initialFetchComplete, setInitialFetchComplete] = useState(false);
   // Use ref to track current data for immediate updates
   const currentValueRef = useRef([]);
-  // Add state to force re-renders when ref changes
-  const [forceUpdate, setForceUpdate] = useState(0);
   // Add cancellation token to prevent race conditions
   const [cancellationToken, setCancellationToken] = useState(0);
   // Add ref to track current feed for immediate filtering
   const currentFeedRef = useRef(null);
+  // Add tab state for switching between data view and analytics
+  const [activeTab, setActiveTab] = useState(0);
+  // Add state for heartbeat countdowns (force re-render every second)
+  const [heartbeatTick, setHeartbeatTick] = useState(0);
 
   // Function to determine which ABI to use based on contract address
   const getContractABI = (address) => {
@@ -276,14 +667,12 @@ const DataFeed = () => {
     return TellorABI; // TellorABI is already an array, not an object with .abi
   };
 
-    // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
-  // Function to fetch data from DataBank contract - CLEAN SINGLE FEED VERSION
-const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0, blockTimeOverride = null, loadMore = false, startIndex = null) => {
+  // Function to fetch data from DataBank contract
+  const fetchDataBankData = useCallback(async (contract, provider, targetFeed = null, token = 0, blockTimeOverride = null, loadMore = false, startIndex = null) => {
 
   try {
     let data = [];
     
-    // CRITICAL: Only process the SPECIFIC feed passed as parameter
     if (!targetFeed) {
       return [];
     }
@@ -467,9 +856,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     _rawTimestamp: aggTimestampMs
                   };
                   
-                  // CRITICAL: Validate that we're still processing the correct feed
+                  // Validate that we're still processing the correct feed
                   if (currentFeed !== targetFeed) {
-                    // Feed has changed, stop processing this transaction
                     return;
                   }
                   
@@ -479,7 +867,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   // Force React to rerender immediately by updating render key
                   setRenderKey(prev => prev + 1);
                   
-                  // CRITICAL: Use setTimeout to break out of synchronous execution and allow React to update
+                  // Break out of synchronous execution to allow React to update
                   await new Promise(resolve => setTimeout(resolve, 0));
                 }
                 
@@ -491,9 +879,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             // Update UI with batch of transactions
             if (data.length > 0) {
               setCurrentValue(prevData => {
-                // CRITICAL: Validate we're still processing the correct feed
+                // Validate we're still processing the correct feed
                 if (currentFeed !== targetFeed || currentFeedRef.current !== targetFeed) {
-                  return prevData; // Feed changed, don't add this data
+                  return prevData;
                 }
                 
                 // For DataBank contracts, only add data if it's for the current feed
@@ -533,7 +921,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                   return sortedData;
                 } else {
                   // For initial load, use the existing logic
-                  // CRITICAL: Remove any existing data from different feeds before adding new data
                   const cleanedPrevData = isDataBankContract && currentFeedRef.current 
                     ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
                     : prevData;
@@ -591,27 +978,24 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 }, [includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
 
   // Function to fetch data from Tellor contract (updated for new contract structure)
-  const fetchTellorData = useCallback(async (contract, provider) => {
+  const fetchTellorData = useCallback(async (contract, provider, feedName = 'ETH/USD', network = 'Sepolia', queryIds = SEPOLIA_QUERY_IDS) => {
     try {
-        // Get ETH/USD query ID - using the same one from DataBank for consistency
-        const ethUsdQueryId = '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992';
-        console.log('Fetching Tellor data for queryId:', ethUsdQueryId);
+        // Get query ID for the selected feed
+        const queryId = queryIds[feedName];
         
         // Get the count of available data points
-        const count = await contract.getAggregateValueCount(ethUsdQueryId);
-        const countNum = Number(count);
-        console.log('Count:', countNum);
-        
-        if (countNum === 0) {
-          // Let's try to get current data instead
+        let count;
+        try {
+          count = await contract.getAggregateValueCount(queryId);
+        } catch (countError) {
+          // If getAggregateValueCount fails, try to get current data instead
           try {
-            const currentData = await contract.getCurrentAggregateData(ethUsdQueryId);
+            const currentData = await contract.getCurrentAggregateData(queryId);
             if (currentData && currentData[0]) {
-              // Process single current data point - data comes as array with indices
-              const value = currentData[0]; // value is at index 0
-              const aggregatePower = typeof currentData[1] === 'bigint' ? Number(currentData[1]) : Number(currentData[1]); // power is at index 1
-              const timestamp = typeof currentData[2] === 'bigint' ? Number(currentData[2]) : Number(currentData[2]); // aggregateTimestamp is at index 2
-              const relayTimestamp = typeof currentData[4] === 'bigint' ? Number(currentData[4]) : Number(currentData[4]); // relayTimestamp is at index 4
+              const value = currentData[0];
+              const aggregatePower = typeof currentData[1] === 'bigint' ? Number(currentData[1]) : Number(currentData[1]);
+              const timestamp = typeof currentData[2] === 'bigint' ? Number(currentData[2]) : Number(currentData[2]);
+              const relayTimestamp = typeof currentData[4] === 'bigint' ? Number(currentData[4]) : Number(currentData[4]);
               
               let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
               if (includeBlockTime && avgBlockTime > 0) {
@@ -623,6 +1007,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
               
               return [{
+                pair: feedName,
+                network: network,
                 value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2
@@ -648,15 +1034,77 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 }),
                 timeDifference: timeDiffFormatted,
                 blockNumber: "Current",
-                txHash: `tellor_eth_usd_current_${Date.now()}`,
-                note: `Current ETH/USD Data`,
+                txHash: `tellor_${feedName.toLowerCase().replace('/', '_')}_current_${Date.now()}`,
+                note: `Current ${feedName} Data`,
                 _rawTimestamp: Number(timestamp)
               }];
             }
           } catch (currentError) {
-            // No current data available
+            // Both methods failed, no data available - return empty array
+            return [];
           }
-          throw new Error('No data available for ETH/USD');
+          // If getAggregateValueCount failed and we couldn't get current data, return empty array
+          return [];
+        }
+        const countNum = Number(count);
+        
+        if (countNum === 0) {
+          try {
+            const currentData = await contract.getCurrentAggregateData(queryId);
+            if (currentData && currentData[0]) {
+              const value = currentData[0];
+              const aggregatePower = typeof currentData[1] === 'bigint' ? Number(currentData[1]) : Number(currentData[1]);
+              const timestamp = typeof currentData[2] === 'bigint' ? Number(currentData[2]) : Number(currentData[2]);
+              const relayTimestamp = typeof currentData[4] === 'bigint' ? Number(currentData[4]) : Number(currentData[4]);
+              
+              let timeDiff = Math.abs(Number(relayTimestamp) - (Number(timestamp) / 1000));
+              if (includeBlockTime && avgBlockTime > 0) {
+                timeDiff = Math.max(0, timeDiff - avgBlockTime);
+              }
+              
+              const timeDiffFormatted = timeDiff < 60 
+                ? `${timeDiff.toFixed(1)}s`
+                : `${Math.floor(timeDiff / 60)}m ${(timeDiff % 60).toFixed(1)}s`;
+              
+              return [{
+                pair: feedName,
+                network: network,
+                value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }),
+                timestamp: new Date(Number(timestamp)).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true
+                }),
+                aggregatePower: aggregatePower.toLocaleString(),
+                relayTimestamp: new Date(Number(relayTimestamp) * 1000).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true
+                }),
+                timeDifference: timeDiffFormatted,
+                blockNumber: "Current",
+                txHash: `tellor_${feedName.toLowerCase().replace('/', '_')}_current_${Date.now()}`,
+                note: `Current ${feedName} Data`,
+                _rawTimestamp: Number(timestamp)
+              }];
+            }
+          } catch (currentError) {
+            // No current data available - return empty array
+            return [];
+          }
+          // If count is 0 and no current data, return empty array
+          return [];
         }
         
         // Fetch data points with pagination (only first page initially)
@@ -666,13 +1114,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         
         for (let i = startIndex; i < endIndex; i++) {
           try {
-            const data = await contract.getAggregateByIndex(ethUsdQueryId, i);
+            const data = await contract.getAggregateByIndex(queryId, i);
             
-            // Convert BigInt values to numbers - data comes as array with indices
-            const value = data[0]; // value is at index 0
-            const aggregatePower = typeof data[1] === 'bigint' ? Number(data[1]) : Number(data[1]); // power is at index 1
-            const timestamp = typeof data[2] === 'bigint' ? Number(data[2]) : Number(data[2]); // aggregateTimestamp is at index 2
-            const relayTimestamp = typeof data[4] === 'bigint' ? Number(data[4]) : Number(data[4]); // relayTimestamp is at index 4
+            const value = data[0];
+            const aggregatePower = typeof data[1] === 'bigint' ? Number(data[1]) : Number(data[1]);
+            const timestamp = typeof data[2] === 'bigint' ? Number(data[2]) : Number(data[2]);
+            const relayTimestamp = typeof data[4] === 'bigint' ? Number(data[4]) : Number(data[4]);
             
             // Calculate time difference in seconds for current row
             // timestamp is in milliseconds, relayTimestamp is in seconds
@@ -697,6 +1144,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             }
             
             processedData.push({
+              pair: feedName,
+              network: network,
               value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
@@ -722,19 +1171,24 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               }),
               timeDifference: timeDiffFormatted,
               blockNumber: realBlockNumber,
-              txHash: `tellor_eth_usd_${i}_${Date.now()}`, // Generate a unique identifier
-              note: `ETH/USD Data ${i + 1}/${countNum}`,
+              txHash: `tellor_${feedName.toLowerCase().replace('/', '_')}_${i}_${Date.now()}`, // Generate a unique identifier
+              note: `${feedName} Data ${i + 1}/${countNum}`,
               // Keep raw timestamp for sorting
               _rawTimestamp: Number(timestamp) * 1000
             });
           } catch (itemError) {
-            console.warn(`Failed to fetch data point ${i}:`, itemError);
+            // Silently skip data points that don't exist (contract reverts are expected)
+            // Only log if it's not a revert/CALL_EXCEPTION (which indicates missing data)
+            if (itemError.code !== 'CALL_EXCEPTION' && !itemError.message?.includes('revert')) {
+              console.warn(`Failed to fetch data point ${i}:`, itemError);
+            }
             // Continue with other data points
           }
         }
         
         if (processedData.length === 0) {
-          throw new Error('No valid data retrieved from contract');
+          // Return empty array instead of throwing - let caller handle empty data
+          return [];
         }
           
           // Sort by raw timestamp descending (newest first)
@@ -756,7 +1210,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
   const calculateAverageBlockTime = async (provider, contractAddress) => {
     // Disable block time calculation to avoid API limits
     const isSagaChain = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase();
-    const defaultBlockTime = isSagaChain ? 2 : 12;
+    const isBaseChain = contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase();
+    const defaultBlockTime = isSagaChain || isBaseChain ? 2 : 12;
     setAvgBlockTime(defaultBlockTime);
     return defaultBlockTime;
   };
@@ -770,8 +1225,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     try {
       setIsIncrementalLoading(true);
       
-      const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.JsonRpcProvider(SAGA_RPC_URL);
       const contract = new ethers.Contract(
         contractAddress,
         DataBankABI.abi,
@@ -814,9 +1268,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     try {
       setIsIncrementalLoading(true);
       
-      const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
-        ? "https://sagaevm.jsonrpc.sagarpc.io"
-        : "https://ethereum-sepolia-rpc.publicnode.com";
+      let rpcUrl;
+      if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+        rpcUrl = SAGA_RPC_URL;
+      } else if (contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase()) {
+        rpcUrl = BASE_RPC_URL;
+      } else {
+        rpcUrl = SEPOLIA_RPC_URL;
+      }
       
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(
@@ -834,10 +1293,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       
       // Fetch next page of Tellor transactions
       const processedData = [];
+      const isBaseContract = contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase();
+      const selectedFeed = isBaseContract ? selectedBaseFeed : selectedSepoliaFeed;
+      const queryIds = isBaseContract ? BASE_QUERY_IDS : SEPOLIA_QUERY_IDS;
+      const network = isBaseContract ? 'Base' : 'Sepolia';
+      const queryId = queryIds[selectedFeed];
       for (let i = startIndex; i < endIndex; i++) {
         try {
-          const ethUsdQueryId = '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992';
-          const data = await contract.getAggregateByIndex(ethUsdQueryId, i);
+          const data = await contract.getAggregateByIndex(queryId, i);
           
           // Process the data (same logic as in fetchTellorData)
           const value = data[0];
@@ -863,6 +1326,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           }
           
           processedData.push({
+            pair: selectedFeed,
+            network: network,
             value: parseFloat(ethers.formatUnits(value, 18)).toLocaleString(undefined, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2
@@ -888,8 +1353,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             }),
             timeDifference: timeDiffFormatted,
             blockNumber: realBlockNumber,
-            txHash: `tellor_eth_usd_${i}_${Date.now()}`,
-            note: `ETH/USD Data Point ${i}`,
+            txHash: `tellor_${selectedFeed.toLowerCase().replace('/', '_')}_${i}_${Date.now()}`,
+            note: `${selectedFeed} Data Point ${i}`,
             _rawTimestamp: Number(timestamp)
           });
         } catch (indexError) {
@@ -934,7 +1399,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     } finally {
       setIsIncrementalLoading(false);
     }
-  }, [isDataBankContract, hasMoreTransactions, isIncrementalLoading, loadedTransactions, totalTransactions, rowsPerPage, contractAddress, avgBlockTime, includeBlockTime, cancellationToken]);
+  }, [isDataBankContract, hasMoreTransactions, isIncrementalLoading, loadedTransactions, totalTransactions, rowsPerPage, contractAddress, avgBlockTime, includeBlockTime, cancellationToken, selectedSepoliaFeed, selectedBaseFeed]);
 
   // Function to fetch only new transactions (for incremental updates)
   const fetchNewTransactionsOnly = useCallback(async (contract, queryId, startIndex, endIndex, token = 0, blockTimeOverride = null) => {
@@ -952,8 +1417,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       }
       
       // Create provider for block number fetching
-      const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new ethers.JsonRpcProvider(SAGA_RPC_URL);
       
       let newData = [];
       
@@ -1094,8 +1558,221 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     }
   }, [selectedDataBankFeed, includeBlockTime, avgBlockTime, currentFeed, cancellationToken, isDataBankContract]);
 
+  // Function to fetch just the latest entry for a single Saga feed (for Overview)
+  const fetchLatestSagaFeedEntry = async (contract, provider, feedName, queryId) => {
+    try {
+      const valueCount = await contract.getAggregateValueCount(queryId);
+      if (!valueCount || valueCount === 0) return null;
+      
+      const countNum = Number(valueCount);
+      const latestIndex = countNum - 1;
+      
+      // Get the individual update data using the correct method
+      const updateData = await contract.getAggregateByIndex(queryId, latestIndex);
+      
+      if (!updateData) return null;
+      
+      // Extract the core data fields (same structure as fetchDataBankData)
+      let price = "0.00";
+      let aggregateTimestamp = 0;
+      let relayTimestamp = 0;
+      let power = 0;
+      
+      try {
+        // Decode the price from the value field (index 0)
+        if (updateData[0] && updateData[0] !== '0x' && updateData[0] !== '0x0') {
+          try {
+            const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], updateData[0]);
+            const rawPrice = decodedValue[0];
+            price = ethers.formatUnits(rawPrice, 18);
+            price = parseFloat(price).toLocaleString('en-US', { 
+              minimumFractionDigits: 2, 
+              maximumFractionDigits: 2 
+            });
+          } catch (decodeError) {
+            console.warn(`Decode error for ${feedName}:`, decodeError);
+            price = "0.00";
+          }
+        }
+        
+        // Extract timestamps and power from the update data using numeric indices
+        power = Number(updateData[1] || 0);                    // index 1: power
+        aggregateTimestamp = Number(updateData[2] || 0);       // index 2: aggregateTimestamp  
+        relayTimestamp = Number(updateData[4] || 0);           // index 4: relayTimestamp
+        
+      } catch (decodeError) {
+        console.warn(`Error processing data for ${feedName}:`, decodeError);
+      }
+      
+      // Handle timestamp conversion - normalize both timestamps to milliseconds
+      const aggTimestampMs = Number(aggregateTimestamp);
+      const finalAggTimestamp = aggTimestampMs < 10000000000 ? aggTimestampMs * 1000 : aggTimestampMs;
+      const relayTimestampMs = Number(relayTimestamp);
+      const finalRelayTimestamp = relayTimestampMs < 10000000000 ? relayTimestampMs * 1000 : relayTimestampMs;
+      
+      // Calculate time difference
+      const timeDiffSeconds = (finalRelayTimestamp - finalAggTimestamp) / 1000;
+      const timeDiffFormatted = formatTimeString(Math.abs(timeDiffSeconds));
+      
+      const currentBlock = await provider.getBlock('latest');
+      const realBlockNumber = currentBlock.number;
+      
+      return {
+        pair: feedName,
+        value: price,
+        timestamp: new Date(finalAggTimestamp).toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        }),
+        aggregatePower: power.toLocaleString(),
+        relayTimestamp: new Date(finalRelayTimestamp).toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        }),
+        timeDifference: timeDiffFormatted,
+        blockNumber: realBlockNumber,
+        _rawTimestamp: finalAggTimestamp
+      };
+    } catch (error) {
+      console.warn(`Failed to fetch latest entry for ${feedName}:`, error);
+      return null;
+    }
+  };
+
+  // Function to fetch all feeds for Overview tab
+  const fetchAllFeeds = useCallback(async () => {
+    try {
+      // Set feed loading state for Overview tab
+      setFeedLoading(true);
+      
+      // Initialize providers and contracts in parallel
+      const sepoliaProvider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+      const sepoliaContract = new ethers.Contract(
+        SEPOLIA_CONTRACT_ADDRESS,
+        TellorABI,
+        sepoliaProvider
+      );
+      
+      const baseProvider = new ethers.JsonRpcProvider(BASE_RPC_URL);
+      const baseContract = new ethers.Contract(
+        BASE_CONTRACT_ADDRESS,
+        TellorABI,
+        baseProvider
+      );
+      
+      const sagaProvider = new ethers.JsonRpcProvider(SAGA_RPC_URL);
+      const sagaContract = new ethers.Contract(
+        DATABANK_CONTRACT_ADDRESS,
+        DataBankABI.abi,
+        sagaProvider
+      );
+      
+      // Fetch all feeds in parallel across all networks
+      const allPromises = [
+        // Sepolia feeds (parallel)
+        fetchTellorData(sepoliaContract, sepoliaProvider, 'ETH/USD', 'Sepolia', SEPOLIA_QUERY_IDS)
+          .then(data => data && data.length > 0 ? data[0] : null)
+          .catch(error => {
+            console.warn('Failed to fetch Sepolia ETH/USD data:', error);
+            return null;
+          }),
+        fetchTellorData(sepoliaContract, sepoliaProvider, 'BTC/USD', 'Sepolia', SEPOLIA_QUERY_IDS)
+          .then(data => data && data.length > 0 ? data[0] : null)
+          .catch(error => {
+            console.warn('Failed to fetch Sepolia BTC/USD data:', error);
+            return null;
+          }),
+        
+        // Base feeds (parallel)
+        fetchTellorData(baseContract, baseProvider, 'ETH/USD', 'Base', BASE_QUERY_IDS)
+          .then(data => data && data.length > 0 ? data[0] : null)
+          .catch(error => {
+            console.warn('Failed to fetch Base ETH/USD data:', error);
+            return null;
+          }),
+        fetchTellorData(baseContract, baseProvider, 'BTC/USD', 'Base', BASE_QUERY_IDS)
+          .then(data => data && data.length > 0 ? data[0] : null)
+          .catch(error => {
+            console.warn('Failed to fetch Base BTC/USD data:', error);
+            return null;
+          }),
+        fetchTellorData(baseContract, baseProvider, 'TRB/USD', 'Base', BASE_QUERY_IDS)
+          .then(data => data && data.length > 0 ? data[0] : null)
+          .catch(error => {
+            console.warn('Failed to fetch Base TRB/USD data:', error);
+            return null;
+          }),
+        
+        // Saga feeds (parallel)
+        ...Object.entries(DATABANK_PRICE_PAIRS).map(([feedName, queryId]) =>
+          fetchLatestSagaFeedEntry(sagaContract, sagaProvider, feedName, queryId)
+            .catch(error => {
+              console.warn(`Failed to fetch Saga ${feedName} data:`, error);
+              return null;
+            })
+        )
+      ];
+      
+      // Wait for all promises to settle (parallel execution)
+      const results = await Promise.all(allPromises);
+      
+      // Filter out null results and update state
+      const allData = results.filter(result => result !== null);
+      
+      if (allData.length > 0) {
+        setOverviewData(allData);
+        setInitialFetchComplete(true);
+      }
+      
+      setLoading(false);
+      setFeedLoading(false);
+    } catch (error) {
+      console.error('Error fetching all feeds:', error);
+      setLoading(false);
+      setFeedLoading(false);
+    }
+  }, [fetchTellorData]);
+
+  // UseEffect to fetch all feeds on mount for Overview tab
+  useEffect(() => {
+    // Only run when on Overview tab
+    if (activeTab === 0) {
+      // Set loading to false immediately so UI renders
+      setLoading(false);
+      // Fetch all feeds (if not already loaded)
+      if (overviewData.length === 0) {
+        fetchAllFeeds();
+      }
+    }
+  }, [activeTab, fetchAllFeeds, overviewData.length]);
+
+  // UseEffect for heartbeat countdown timer (updates every second)
+  // This causes the Overview tab to re-render every second, updating all countdowns
+  useEffect(() => {
+    if (activeTab === 0) {
+      const heartbeatInterval = setInterval(() => {
+        setHeartbeatTick(prev => prev + 1);
+      }, 1000);
+      return () => clearInterval(heartbeatInterval);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
+    // Skip main data fetching if on Overview tab
+    if (activeTab === 0) {
+      return;
+    }
+    
     // Skip main data fetching if a specific DataBank feed is selected
     if (selectedDataBankFeed && contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
       return;
@@ -1106,13 +1783,18 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
       return;
     }
     
+    setFeedLoading(true);
+    
     const fetchData = async () => {
       try {
-        // Using the correct Saga EVM RPC endpoint
-        
-        const rpcUrl = contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase() 
-          ? "https://sagaevm.jsonrpc.sagarpc.io" // Correct Saga EVM RPC
-          : "https://ethereum-sepolia-rpc.publicnode.com"; // Sepolia public RPC
+        let rpcUrl;
+        if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
+          rpcUrl = SAGA_RPC_URL;
+        } else if (contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase()) {
+          rpcUrl = BASE_RPC_URL;
+        } else {
+          rpcUrl = SEPOLIA_RPC_URL;
+        }
         
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const contractABI = getContractABI(contractAddress);
@@ -1135,8 +1817,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           processedData = [];
         } else {
           setIsDataBankContract(false);
+          const isBaseContract = contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase();
+          const selectedFeed = isBaseContract ? selectedBaseFeed : selectedSepoliaFeed;
+          const queryIds = isBaseContract ? BASE_QUERY_IDS : SEPOLIA_QUERY_IDS;
+          const network = isBaseContract ? 'Base' : 'Sepolia';
           try {
-            processedData = await fetchTellorData(contract, provider);
+            processedData = await fetchTellorData(contract, provider, selectedFeed, network, queryIds);
           } catch (error) {
             console.error('Tellor fetch error:', error);
             processedData = [];
@@ -1166,10 +1852,15 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [contractAddress, includeBlockTime, timeScale, customStartDate, customEndDate, fetchTellorData, selectedDataBankFeed]);
+  }, [contractAddress, includeBlockTime, timeScale, customStartDate, customEndDate, fetchTellorData, selectedDataBankFeed, selectedSepoliaFeed, selectedBaseFeed, activeTab]);
 
     // Separate useEffect to handle DataBank feed selection changes
   useEffect(() => {
+    // Skip if on Overview tab
+    if (activeTab === 0) {
+      return;
+    }
+    
     // Only run if we have a selected feed and we're on the DataBank contract
     if (!selectedDataBankFeed || contractAddress.toLowerCase() !== DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
       return;
@@ -1195,11 +1886,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     // Set current feed being processed
     setCurrentFeed(selectedDataBankFeed);
     
+    setFeedLoading(true);
+    
     // Initial data fetch when feed selection changes
     const fetchSelectedFeedData = async () => {
       try {
-        const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const provider = new ethers.JsonRpcProvider(SAGA_RPC_URL);
         const contract = new ethers.Contract(
           contractAddress,
           DataBankABI.abi,
@@ -1252,8 +1944,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           }
           
           try {
-            const rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
-            const provider = new ethers.JsonRpcProvider(rpcUrl);
+            const provider = new ethers.JsonRpcProvider(SAGA_RPC_URL);
             const contract = new ethers.Contract(
               contractAddress,
               DataBankABI.abi,
@@ -1296,12 +1987,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                 
                 // Append new transactions to existing data and sort by timestamp (newest first)
                 setCurrentValue(prevData => {
-                  // CRITICAL: Validate we're still on the correct feed
+                  // Validate we're still on the correct feed
                   if (currentFeed !== selectedDataBankFeed || currentFeedRef.current !== selectedDataBankFeed) {
                     return prevData;
                   }
                   
-                  // CRITICAL: Clean existing data to remove any cross-feed contamination
+                  // Clean existing data to remove any cross-feed contamination
                   const cleanedPrevData = isDataBankContract && currentFeedRef.current 
                     ? prevData.filter(existing => !existing.pair || existing.pair === currentFeedRef.current)
                     : prevData;
@@ -1376,34 +2067,37 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     // Initial fetch
     fetchSelectedFeedData();
     
-  }, [selectedDataBankFeed, contractAddress, fetchDataBankData]);
+  }, [selectedDataBankFeed, contractAddress, fetchDataBankData, activeTab]);
 
   // Effect to immediately clear data when feed changes
   useEffect(() => {
-    // CRITICAL: Always clear data immediately when feed changes, regardless of feed type
+    // Clear data immediately when feed changes
     setCurrentValue([]);
     currentValueRef.current = [];
     setInitialFetchComplete(false);
     setIsIncrementalLoading(false);
-    setPage(1); // Reset to first page
+    setPage(1);
     
-    // Clear block time state when switching feeds to prevent data corruption
+    // Clear block time cache when switching feeds
     setAvgBlockTime(0);
     
     if (selectedDataBankFeed) {
-      // Setting up for DataBank feed
       setCurrentFeed(selectedDataBankFeed);
-      currentFeedRef.current = selectedDataBankFeed; // Update ref immediately
+      currentFeedRef.current = selectedDataBankFeed;
+    } else if (contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase()) {
+      setCurrentFeed(selectedSepoliaFeed);
+      currentFeedRef.current = selectedSepoliaFeed;
+    } else if (contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase()) {
+      setCurrentFeed(selectedBaseFeed);
+      currentFeedRef.current = selectedBaseFeed;
     } else {
-      // Clearing feed selection (going to Tellor or no feed)
       setCurrentFeed(null);
-      currentFeedRef.current = null; // Update ref immediately
+      currentFeedRef.current = null;
     }
     
     // Force a re-render to ensure UI updates
-    setForceUpdate(prev => prev + 1);
     setRenderKey(prev => prev + 1);
-  }, [selectedDataBankFeed]);
+  }, [selectedDataBankFeed, selectedSepoliaFeed, selectedBaseFeed, contractAddress]);
 
   // Effect to recalculate block time when toggle changes or feed changes
   useEffect(() => {
@@ -1413,9 +2107,11 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         try {
           let rpcUrl;
           if (contractAddress.toLowerCase() === DATABANK_CONTRACT_ADDRESS.toLowerCase()) {
-            rpcUrl = "https://sagaevm.jsonrpc.sagarpc.io";
+            rpcUrl = SAGA_RPC_URL;
+          } else if (contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase()) {
+            rpcUrl = BASE_RPC_URL;
           } else {
-            rpcUrl = "https://eth-sepolia.g.alchemy.com/v2/c9C61uwd-LHombk09TFBRF-NGhNI75JX";
+            rpcUrl = SEPOLIA_RPC_URL;
           }
           
 
@@ -1579,7 +2275,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
 
   // Cleanup effect to clear all data when switching contract types
   useEffect(() => {
-    // CRITICAL: Always clear data completely when switching contract types
+    // Clear data completely when switching contract types
     setCurrentValue([]);
     currentValueRef.current = [];
     setInitialFetchComplete(false);
@@ -1600,7 +2296,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
     }
     
     // Force re-render
-    setForceUpdate(prev => prev + 1);
     setRenderKey(prev => prev + 1);
   }, [contractAddress]);
 
@@ -1720,8 +2415,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
           <Switch
             checked={includeBlockTime}
             onChange={(e) => {
-
-
               setIncludeBlockTime(e.target.checked);
             }}
             sx={{
@@ -2474,12 +3167,14 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             {/* Header with Logo and Status */}
       <Grid container alignItems="center" sx={{ mt: 4, mb: 3 }}>
         <Grid item xs={12} sm={6} sx={{ mb: { xs: 2, sm: 0 } }}>
-          <img 
-            src="/tellor-relayer-logo.png" 
+          <Box
+            component="img"
+            src="/tellor-relayer-logo.png"
             alt="Tellor Relayer"
-            style={{
-              height: '50px',
+            sx={{
+              height: { xs: '35px', sm: '50px' },
               width: 'auto',
+              maxWidth: '100%',
               display: 'block'
             }}
           />
@@ -2487,8 +3182,262 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
         </Grid>
       </Grid>
 
-      {/* Side-by-Side Layout: Left (Price Feeds + Data Feed) | Right (Chart) */}
-      <div className="datafeed-container">
+      {/* Tabs for Overview and Feed History */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs 
+          value={activeTab} 
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          sx={{
+            '& .MuiTab-root': {
+              color: '#0E5353',
+              fontWeight: 'normal',
+              textTransform: 'none',
+              fontSize: '16px',
+              minWidth: 120,
+            },
+            '& .Mui-selected': {
+              color: '#0E5353',
+              fontWeight: 'bold',
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#0E5353',
+              height: 3,
+            }
+          }}
+        >
+          <Tab label="Overview" />
+          <Tab label="Feed Analytics" />
+        </Tabs>
+      </Box>
+
+      {/* Tab Content */}
+      {activeTab === 0 ? (
+        // Overview Tab - Latest report from each feed
+        <div className="overview-tab">
+          {/* Feed Selection */}
+          <div className="price-feeds-container" style={{ padding: '8px 16px', backgroundColor: 'transparent' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '0' }}>
+              <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 0, fontSize: '16px', lineHeight: 1.2 }}>
+                Latest Reports from All Feeds
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#0E5353', fontSize: '14px', opacity: 0.8, lineHeight: 1.2 }}>
+                Showing the most recent report relayed from Tellor for each unique price feed across all networks
+              </Typography>
+            </div>
+          </div>
+
+          {/* Latest Reports Table */}
+          <TableContainer 
+            component={Paper}
+            sx={{ 
+              backgroundColor: 'transparent',
+              boxShadow: 'none',
+              border: '1px solid rgba(14, 83, 83, 0.2)',
+              mt: 2
+            }}
+          >
+            <Table sx={{ minWidth: 650 }}>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: 'rgba(14, 83, 83, 0.05)' }}>
+                  <TableCell 
+                    sx={{ 
+                      color: '#0E5353', 
+                      fontWeight: 'bold', 
+                      fontSize: '14px', 
+                      borderBottom: '2px solid rgba(14, 83, 83, 0.3)',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      '&:hover': {
+                        backgroundColor: 'rgba(14, 83, 83, 0.1)'
+                      }
+                    }}
+                    onClick={() => {
+                      if (overviewSortColumn === 'feed') {
+                        setOverviewSortDirection(overviewSortDirection === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setOverviewSortColumn('feed');
+                        setOverviewSortDirection('asc');
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Feed
+                      {overviewSortColumn === 'feed' && (
+                        overviewSortDirection === 'asc' ? <ArrowUpward sx={{ fontSize: '16px' }} /> : <ArrowDownward sx={{ fontSize: '16px' }} />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell 
+                    sx={{ 
+                      color: '#0E5353', 
+                      fontWeight: 'bold', 
+                      fontSize: '14px', 
+                      borderBottom: '2px solid rgba(14, 83, 83, 0.3)',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      '&:hover': {
+                        backgroundColor: 'rgba(14, 83, 83, 0.1)'
+                      }
+                    }}
+                    onClick={() => {
+                      if (overviewSortColumn === 'network') {
+                        setOverviewSortDirection(overviewSortDirection === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setOverviewSortColumn('network');
+                        setOverviewSortDirection('asc');
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Network
+                      {overviewSortColumn === 'network' && (
+                        overviewSortDirection === 'asc' ? <ArrowUpward sx={{ fontSize: '16px' }} /> : <ArrowDownward sx={{ fontSize: '16px' }} />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                    Value
+                  </TableCell>
+                  <TableCell sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                    Deviation Threshold
+                  </TableCell>
+                  <TableCell sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                    Heartbeat
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {feedLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 6, border: 'none' }}>
+                      <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                      <div style={{ color: '#0E5353' }}>Loading all feeds...</div>
+                    </TableCell>
+                  </TableRow>
+                ) : Array.isArray(overviewData) && overviewData.length > 0 ? (
+                  // Group by feed and network, show only the latest report for each
+                  (() => {
+                    const latestReports = {};
+                    overviewData.forEach(data => {
+                      const feedName = data.pair || 'ETH/USD';
+                      const network = data.network || 'Saga';
+                      // Use feedName + network as key to distinguish between networks
+                      const key = `${feedName}-${network}`;
+                      if (!latestReports[key] || data._rawTimestamp > latestReports[key]._rawTimestamp) {
+                        latestReports[key] = data;
+                      }
+                    });
+                    
+                    return Object.values(latestReports)
+                      .sort((a, b) => {
+                        let compareResult = 0;
+                        
+                        if (overviewSortColumn === 'network') {
+                          const networkA = a.network || 'Saga';
+                          const networkB = b.network || 'Saga';
+                          compareResult = networkA.localeCompare(networkB);
+                          // If networks are equal, sort by feed name as secondary
+                          if (compareResult === 0) {
+                            const feedA = a.pair || 'ETH/USD';
+                            const feedB = b.pair || 'ETH/USD';
+                            compareResult = feedA.localeCompare(feedB);
+                          }
+                        } else if (overviewSortColumn === 'feed') {
+                          const feedA = a.pair || 'ETH/USD';
+                          const feedB = b.pair || 'ETH/USD';
+                          compareResult = feedA.localeCompare(feedB);
+                          // If feeds are equal, sort by network as secondary
+                          if (compareResult === 0) {
+                            const networkA = a.network || 'Saga';
+                            const networkB = b.network || 'Saga';
+                            compareResult = networkA.localeCompare(networkB);
+                          }
+                        }
+                        
+                        // Apply sort direction
+                        return overviewSortDirection === 'asc' ? compareResult : -compareResult;
+                      })
+                      .map((data, index) => {
+                        const feedName = data.pair || 'ETH/USD';
+                        const network = data.network || 'Saga';
+                        const networkDisplayName = network === 'Sepolia' ? 'Sepolia Testnet' : network === 'Base' ? 'Base Mainnet' : 'Saga Mainnet';
+                        return (
+                          <TableRow 
+                            key={index}
+                            onClick={() => {
+                            let explorerUrl;
+                            if (data.network === 'Sepolia') {
+                              explorerUrl = ETHERSCAN_BASE_URL + SEPOLIA_CONTRACT_ADDRESS;
+                            } else if (data.network === 'Base') {
+                              explorerUrl = `https://basescan.org/address/${BASE_CONTRACT_ADDRESS}`;
+                            } else {
+                              explorerUrl = `https://sagaevm.sagaexplorer.io/address/${DATABANK_CONTRACT_ADDRESS}?tab=transactions`;
+                            }
+                              window.open(explorerUrl, '_blank');
+                            }}
+                            sx={{
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s',
+                              '&:hover': {
+                                backgroundColor: 'rgba(14, 83, 83, 0.08)',
+                              },
+                              '&:last-child td': {
+                                border: 0
+                              }
+                            }}
+                          >
+                            <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                {getFeedIcon(feedName)}
+                                <span style={{ fontWeight: 'bold' }}>{feedName}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                {getNetworkIcon(network)}
+                                <span style={{ fontWeight: 'bold' }}>{networkDisplayName}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                              ${data.value}
+                            </TableCell>
+                            <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                              {DEVIATION_THRESHOLD[feedName] || 'N/A'}
+                            </TableCell>
+                            <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)', fontSize: '13px' }}>
+                              {(() => {
+                                const heartbeat = calculateHeartbeat(data.timestamp);
+                                return heartbeat.text;
+                              })()}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                  })()
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 6, border: 'none' }}>
+                      <div style={{ color: '#0E5353', opacity: 0.7 }}>
+                        {loading ? (
+                          <div>
+                            <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                            <div>Loading data...</div>
+                          </div>
+                        ) : (
+                          <div>No data available. Please wait for feeds to load.</div>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </div>
+      ) : (
+        // Feed History Tab - Historical data with analytics
+        <div className="feed-history-tab">
+        <div className="datafeed-container">
         {/* Left Column - Price Feeds + Data Feed */}
         <div className="datafeed-left-column">
           {/* Oracle Price Feeds */}
@@ -2518,6 +3467,7 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         if (feedLoading) return; // Prevent clicks during loading
                         
                         setFeedLoading(true); // Start loading immediately
+                        setSelectedSepoliaFeed('ETH/USD');
                         
                         // Use Sepolia Tellor contract
                         setSelectedDataBankFeed(null);
@@ -2535,7 +3485,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         setPage(1);
                         
                         // Force re-render
-                        setForceUpdate(prev => prev + 1);
                         setRenderKey(prev => prev + 1);
                       }}
                       disabled={feedLoading}
@@ -2543,9 +3492,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       minWidth: '110px',
                     padding: '8px 16px',
                         textTransform: 'none',
-                        fontWeight: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'bold' : 'normal',
-                        backgroundColor: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? '#0E5353' : 'transparent',
-                        color: (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353',
+                        fontWeight: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD') ? 'white' : '#0E5353',
                         border: `2px solid #0E5353`,
                       borderRadius: '4px',
                       cursor: feedLoading ? 'not-allowed' : 'pointer',
@@ -2554,12 +3503,12 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                         opacity: feedLoading ? 0.6 : 1
                       }}
                       onMouseEnter={(e) => {
-                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a')) {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD')) {
                           e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a')) {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD')) {
                           e.target.style.backgroundColor = 'transparent';
                         }
                       }}
@@ -2590,15 +3539,393 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                                   width: '6px',
                                   height: '2px',
                                   backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
-                                    ? ((!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353')
+                                    ? ((!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD') ? 'white' : '#0E5353')
                                     : 'rgba(255,255,255,0.3)',
                                   borderRadius: '1px'
                                 }}
                               />
                             ))}
                           </div>
-                          {getFeedTypeSymbol('ETH/USD', (!selectedDataBankFeed && contractAddress === '0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a') ? 'white' : '#0E5353')}
+                          {getFeedTypeSymbol('ETH/USD', (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'ETH/USD') ? 'white' : '#0E5353')}
                           <span>ETH/USD</span>
+                        </div>
+                      )}
+                  </button>
+                  
+                  <button
+                      onClick={() => {
+                        if (feedLoading) return;
+                        
+                        setFeedLoading(true);
+                        setSelectedSepoliaFeed('BTC/USD');
+                        
+                        // Use Sepolia Tellor contract
+                        setSelectedDataBankFeed(null);
+                        setIsDataBankContract(false);
+                        setContractAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                        setInputAddress('0xF03B401966eF4c32e7Cef769c4BB2833BaC0eb9a');
+                        
+                        // Clear current data immediately to show loading state
+                        setCurrentValue([]);
+                        currentValueRef.current = [];
+                        setCurrentFeed(null);
+                        currentFeedRef.current = null;
+                        setInitialFetchComplete(false);
+                        setIsIncrementalLoading(false);
+                        setPage(1);
+                        
+                        // Force re-render
+                        setRenderKey(prev => prev + 1);
+                      }}
+                      disabled={feedLoading}
+                  style={{
+                      minWidth: '110px',
+                    padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD') ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                      borderRadius: '4px',
+                      cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD')) {
+                          e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD')) {
+                          e.target.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && selectedDataBankFeed ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT['BTC/USD'] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT['BTC/USD'] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['BTC/USD'] || 'high'] 
+                                    ? ((!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD') ? 'white' : '#0E5353')
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {getFeedTypeSymbol('BTC/USD', (!selectedDataBankFeed && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && selectedSepoliaFeed === 'BTC/USD') ? 'white' : '#0E5353')}
+                          <span>BTC/USD</span>
+                        </div>
+                      )}
+                  </button>
+                  </div>
+                </div>
+
+                {/* Base Feeds */}
+                <div>
+                  <Typography variant="body2" sx={{ color: '#0E5353', fontWeight: 'bold', mb: 2, fontSize: '14px' }}>
+                    Base Feeds:
+                    {feedLoading && !isDataBankContract && (
+                      <span style={{ 
+                        marginLeft: '8px', 
+                        fontSize: '12px', 
+                        opacity: 0.7,
+                        fontWeight: 'normal'
+                      }}>
+                        (Loading...)
+                      </span>
+                    )}
+                  </Typography>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button
+                      onClick={() => {
+                        if (feedLoading) return; // Prevent clicks during loading
+                        
+                        setFeedLoading(true); // Start loading immediately
+                        setSelectedBaseFeed('ETH/USD');
+                        
+                        // Use Base Tellor contract
+                        setSelectedDataBankFeed(null);
+                        setIsDataBankContract(false);
+                        setContractAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        setInputAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        
+                        // Clear current data immediately to show loading state
+                        setCurrentValue([]);
+                        currentValueRef.current = [];
+                        setCurrentFeed(null);
+                        currentFeedRef.current = null;
+                        setInitialFetchComplete(false);
+                        setIsIncrementalLoading(false);
+                        setPage(1);
+                        
+                        // Force re-render
+                        setRenderKey(prev => prev + 1);
+                      }}
+                      disabled={feedLoading}
+                  style={{
+                      minWidth: '110px',
+                    padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD') ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                      borderRadius: '4px',
+                      cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD')) {
+                          e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD')) {
+                          e.target.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && selectedDataBankFeed ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT['ETH/USD'] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT['ETH/USD'] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['ETH/USD'] || 'high'] 
+                                    ? ((!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD') ? 'white' : '#0E5353')
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {getFeedTypeSymbol('ETH/USD', (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'ETH/USD') ? 'white' : '#0E5353')}
+                          <span>ETH/USD</span>
+                        </div>
+                      )}
+                  </button>
+                  
+                  <button
+                      onClick={() => {
+                        if (feedLoading) return;
+                        
+                        setFeedLoading(true);
+                        setSelectedBaseFeed('BTC/USD');
+                        
+                        // Use Base Tellor contract
+                        setSelectedDataBankFeed(null);
+                        setIsDataBankContract(false);
+                        setContractAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        setInputAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        
+                        // Clear current data immediately to show loading state
+                        setCurrentValue([]);
+                        currentValueRef.current = [];
+                        setCurrentFeed(null);
+                        currentFeedRef.current = null;
+                        setInitialFetchComplete(false);
+                        setIsIncrementalLoading(false);
+                        setPage(1);
+                        
+                        // Force re-render
+                        setRenderKey(prev => prev + 1);
+                      }}
+                      disabled={feedLoading}
+                  style={{
+                      minWidth: '110px',
+                    padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD') ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                      borderRadius: '4px',
+                      cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD')) {
+                          e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD')) {
+                          e.target.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && selectedDataBankFeed ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT['BTC/USD'] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT['BTC/USD'] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['BTC/USD'] || 'high'] 
+                                    ? ((!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD') ? 'white' : '#0E5353')
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {getFeedTypeSymbol('BTC/USD', (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'BTC/USD') ? 'white' : '#0E5353')}
+                          <span>BTC/USD</span>
+                        </div>
+                      )}
+                  </button>
+                  
+                  <button
+                      onClick={() => {
+                        if (feedLoading) return;
+                        
+                        setFeedLoading(true);
+                        setSelectedBaseFeed('TRB/USD');
+                        
+                        // Use Base Tellor contract
+                        setSelectedDataBankFeed(null);
+                        setIsDataBankContract(false);
+                        setContractAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        setInputAddress('0x5589e306b1920F009979a50B88caE32aecD471E4');
+                        
+                        // Clear current data immediately to show loading state
+                        setCurrentValue([]);
+                        currentValueRef.current = [];
+                        setCurrentFeed(null);
+                        currentFeedRef.current = null;
+                        setInitialFetchComplete(false);
+                        setIsIncrementalLoading(false);
+                        setPage(1);
+                        
+                        // Force re-render
+                        setRenderKey(prev => prev + 1);
+                      }}
+                      disabled={feedLoading}
+                  style={{
+                      minWidth: '110px',
+                    padding: '8px 16px',
+                        textTransform: 'none',
+                        fontWeight: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD') ? 'bold' : 'normal',
+                        backgroundColor: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD') ? '#0E5353' : 'transparent',
+                        color: (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD') ? 'white' : '#0E5353',
+                        border: `2px solid #0E5353`,
+                      borderRadius: '4px',
+                      cursor: feedLoading ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        transition: 'all 0.2s ease',
+                        opacity: feedLoading ? 0.6 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD')) {
+                          e.target.style.backgroundColor = 'rgba(14, 83, 83, 0.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!feedLoading && !(!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD')) {
+                          e.target.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {feedLoading && selectedDataBankFeed ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <CircularProgress size={12} style={{ color: 'white' }} />
+                          <span>Loading...</span>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column-reverse',
+                              gap: '1px', 
+                              height: '10px',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexShrink: 0
+                            }}
+                            title={`Risk Level: ${FEED_RISK_ASSESSMENT['TRB/USD'] === 'exemplary' ? 'Exemplary (3/3)' : FEED_RISK_ASSESSMENT['TRB/USD'] === 'moderate' ? 'Moderate (2/3)' : 'High Risk (1/3)'}`}
+                          >
+                            {Array.from({ length: 3 }, (_, index) => (
+                              <div
+                                key={index}
+                                style={{
+                                  width: '6px',
+                                  height: '2px',
+                                  backgroundColor: index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT['TRB/USD'] || 'high'] 
+                                    ? ((!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD') ? 'white' : '#0E5353')
+                                    : 'rgba(255,255,255,0.3)',
+                                  borderRadius: '1px'
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {getFeedTypeSymbol('TRB/USD', (!selectedDataBankFeed && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && selectedBaseFeed === 'TRB/USD') ? 'white' : '#0E5353')}
+                          <span>TRB/USD</span>
                         </div>
                       )}
                   </button>
@@ -2648,10 +3975,10 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                     }
                   }}
                 >
-                  <InputLabel sx={{ color: selectedDataBankFeed ? 'white' : '#0E5353', display: 'none' }}>Select Feed</InputLabel>
                   <Select
                     value={selectedDataBankFeed || ''}
                     label="Select Saga Feed"
+                    displayEmpty
                     sx={{
                       '& .MuiSelect-select': {
                         backgroundColor: selectedDataBankFeed ? '#0E5353' : 'transparent',
@@ -2673,7 +4000,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                           setInitialFetchComplete(false);
                           setIsIncrementalLoading(false);
                         setPage(1);
-                        setForceUpdate(prev => prev + 1);
                         setRenderKey(prev => prev + 1);
                           setSelectedDataBankFeed(null);
                           setIsDataBankContract(false);
@@ -2690,7 +4016,6 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                           setInitialFetchComplete(false);
                           setIsIncrementalLoading(false);
                         setPage(1);
-                        setForceUpdate(prev => prev + 1);
                         setRenderKey(prev => prev + 1);
                         setSelectedDataBankFeed(selectedFeed);
                           setIsDataBankContract(true);
@@ -2700,7 +4025,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       }}
                       disabled={feedLoading}
                     renderValue={(selected) => {
-                      if (!selected) return '';
+                      if (!selected || selected === '') {
+                        return <span style={{ color: '#0E5353', opacity: 0.6 }}>Select feed</span>;
+                      }
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <div 
@@ -2953,8 +4280,8 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>×</span>
                       <span style={{ fontSize: '7px', color: '#0E5353', opacity: 0.8, lineHeight: '1' }}>(market price of underlying asset)</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '-70px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '1px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <div style={{ 
                           width: '8px',
                           height: '8px',
@@ -3014,129 +4341,171 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
               </div>
             )}
             
-            <Grid container spacing={2} key={`${renderKey}-${forceUpdate}`}>
-              {/* Data feed items */}
-              <Grid item xs={12}>
-                <Grid container spacing={2}>
+            {/* Table-based layout */}
+            <TableContainer 
+              component={Paper} 
+              key={renderKey}
+              sx={{ 
+                backgroundColor: 'transparent',
+                boxShadow: 'none',
+                border: '1px solid rgba(14, 83, 83, 0.2)'
+              }}
+            >
+              <Table sx={{ minWidth: 650 }}>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: 'rgba(14, 83, 83, 0.05)' }}>
+                    <TableCell sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Feed
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Value
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Deviation Threshold
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Power
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Reported
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Relayed
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#0E5353', fontWeight: 'bold', fontSize: '14px', borderBottom: '2px solid rgba(14, 83, 83, 0.3)' }}>
+                      Delay
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                   {feedLoading ? (
                     // Show loading state when fetching feed data
-                    <Grid item xs={12}>
-                      <div style={{ 
-                        padding: '40px', 
-                        textAlign: 'center',
-                        color: '#0E5353'
-                      }}>
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ py: 6, border: 'none' }}>
                         <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
-                        <div>Loading {selectedDataBankFeed} data...</div>
-                        <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '8px' }}>
+                        <div style={{ color: '#0E5353' }}>Loading {selectedDataBankFeed} data...</div>
+                        <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '8px', color: '#0E5353' }}>
                           This may take a few moments while we fetch the latest transactions
                         </div>
-                      </div>
-                    </Grid>
+                      </TableCell>
+                    </TableRow>
                   ) : Array.isArray(currentValue) && currentValue.length > 0 ? (
-                    // Show data when available - FILTER appropriately based on contract type
+                    // Filter and display data based on contract type
                     currentValue
                       .filter(data => {
-                        // CRITICAL: For DataBank contracts, only show current feed data
+                        // For DataBank contracts, only show current feed data
                         if (isDataBankContract && selectedDataBankFeed && data.pair) {
                           return data.pair === selectedDataBankFeed;
                         }
-                        // CRITICAL: For Tellor contracts, exclude any data with pair property (DataBank data)
-                        if (!isDataBankContract && !selectedDataBankFeed) {
-                          return !data.pair; // Only show data without pair property (Tellor data)
+                        // For Sepolia Tellor contracts, show data matching selected feed
+                        if (!isDataBankContract && contractAddress.toLowerCase() === SEPOLIA_CONTRACT_ADDRESS.toLowerCase() && data.network === 'Sepolia') {
+                          return data.pair === selectedSepoliaFeed;
+                        }
+                        // For Base Tellor contracts, show data matching selected feed
+                        if (!isDataBankContract && contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase() && data.network === 'Base') {
+                          return data.pair === selectedBaseFeed;
+                        }
+                        // For old Tellor contracts without feed selection, exclude DataBank data
+                        if (!isDataBankContract && !selectedDataBankFeed && data.network !== 'Sepolia' && data.network !== 'Base') {
+                          return !data.pair;
                         }
                         // Fallback: don't show data if we're in an inconsistent state
                         return false;
                       })
                       .slice((page - 1) * rowsPerPage, page * rowsPerPage)
                       .map((data, index) => (
-                        <Grid item xs={12} key={index}>
-                          <Card 
-                            sx={{ 
-                              py: 1, 
-                              cursor: 'pointer',
-                              '&:hover': {
-                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                transition: 'background-color 0.3s',
-                                '& .MuiTypography-root': {
-                                  color: '#0E5353',
-                                  transition: 'color 0.3s'
-                                }
-                              }
-                            }}
-                            onClick={() => {
-                              if (isDataBankContract) {
-                                // For DataBank, link to the transactions tab to see all transactions
-                                window.open(`https://sagaevm.sagaexplorer.io/address/${contractAddress}?tab=transactions`, '_blank');
-                              } else {
-                                // For Tellor, use the contract address
-                                window.open(ETHERSCAN_BASE_URL + contractAddress, '_blank');
-                              }
-                            }}
-                          >
-                            <CardContent sx={{ py: '8px !important' }}>
-                              <Grid container spacing={2}>
-                                {/* First Row - Main Data */}
-                                <Grid item xs={12}>
-                                  <Grid container alignItems="center" spacing={3}>
-                                    <Grid item xs={12} sm={2.4}>
-                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                        <span style={{ fontWeight: 'bold' }}>
-                                          {isDataBankContract && data.pair ? data.pair : 'ETH/USD'}:
-                                        </span> ${data.value}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item xs={12} sm={2.4}>
-                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                        <span style={{ fontWeight: 'bold' }}>Power:</span> {data.aggregatePower}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item xs={12} sm={2.4}>
-                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                        <span style={{ fontWeight: 'bold' }}>Reported:</span> {data.timestamp}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item xs={12} sm={2.4}>
-                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                        <span style={{ fontWeight: 'bold' }}>Relayed:</span> {data.relayTimestamp}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item xs={12} sm={2.4}>
-                                      <Typography variant="body2" color="textSecondary" gutterBottom={false}>
-                                        <span style={{ fontWeight: 'bold' }}>Delay:</span> {data.timeDifference}
-                                      </Typography>
-                                    </Grid>
-                                  </Grid>
-                                </Grid>
-                              </Grid>
-                            </CardContent>
-                          </Card>
-                        </Grid>
+                        <TableRow 
+                          key={index}
+                          onClick={() => {
+                            if (isDataBankContract) {
+                              window.open(`https://sagaevm.sagaexplorer.io/address/${contractAddress}?tab=transactions`, '_blank');
+                            } else if (contractAddress.toLowerCase() === BASE_CONTRACT_ADDRESS.toLowerCase()) {
+                              window.open(`https://basescan.org/address/${contractAddress}`, '_blank');
+                            } else {
+                              window.open(ETHERSCAN_BASE_URL + contractAddress, '_blank');
+                            }
+                          }}
+                          sx={{
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s',
+                            '&:hover': {
+                              backgroundColor: 'rgba(14, 83, 83, 0.08)',
+                            },
+                            '&:last-child td': {
+                              border: 0
+                            }
+                          }}
+                        >
+                          <TableCell sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ 
+                                display: 'flex', 
+                                flexDirection: 'column-reverse',
+                                gap: '1px', 
+                                height: '10px',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                {Array.from({ length: 3 }, (_, i) => (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      width: '6px',
+                                      height: '2px',
+                                      backgroundColor: i < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[data.pair || 'ETH/USD'] || 'high'] 
+                                        ? '#0E5353'
+                                        : 'rgba(14, 83, 83, 0.3)',
+                                      borderRadius: '1px'
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              {getFeedTypeSymbol(data.pair || 'ETH/USD', '#0E5353')}
+                              <span style={{ fontWeight: 'bold' }}>
+                                {data.pair || 'ETH/USD'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            ${data.value}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            {DEVIATION_THRESHOLD[data.pair || 'ETH/USD'] || 'N/A'}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            {data.aggregatePower}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, fontSize: '13px', borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            {data.timestamp}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, fontSize: '13px', borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            {data.relayTimestamp}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: '#0E5353', py: 2, borderBottom: '1px solid rgba(14, 83, 83, 0.1)' }}>
+                            {data.timeDifference}
+                          </TableCell>
+                        </TableRow>
                       ))
                   ) : (
                     // Show no data message when not loading and no data
-                    <Grid item xs={12}>
-                      <div style={{ 
-                        padding: '40px', 
-                        textAlign: 'center',
-                        color: '#0E5353',
-                        opacity: 0.7
-                      }}>
-                        {loading ? (
-                          <div>
-                            <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
-                            <div>Loading data...</div>
-                          </div>
-                        ) : (
-                          <div>No data available for the selected feed</div>
-                        )}
-                      </div>
-                    </Grid>
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ py: 6, border: 'none' }}>
+                        <div style={{ 
+                          color: '#0E5353',
+                          opacity: 0.7
+                        }}>
+                          <CircularProgress size={40} style={{ color: '#0E5353', marginBottom: '16px' }} />
+                          <div>{feedLoading ? 'Fetching data for the selected feed...' : 'No data available for the selected feed'}</div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </Grid>
-                
-                {/* Pagination and Load More Controls */}
-                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            {/* Pagination and Load More Controls - outside table */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
                   {!feedLoading && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                       {/* Pagination Controls */}
@@ -3182,19 +4551,17 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
                       )}
                       
                       {/* Status Text */}
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ color: '#0E5353' }}>
                         Showing {loadedTransactions} of {totalTransactions} transactions
                         {loadedPages > 1 && ` • Page ${page} of ${loadedPages}`}
                       </Typography>
                     </Box>
                   )}
-                </Grid>
-              </Grid>
-            </Grid>
+            </Box>
           </div>
         </div>
 
-        {/* Right Column - Chart */}
+        {/* Right Column - Analytics Dashboard */}
         <div className="analytics-dashboard">
           {/* Chart header - simple title */}
           <div className="analytics-dashboard-header">
@@ -3262,7 +4629,9 @@ const fetchDataBankData = useCallback(async (contract, provider, targetFeed = nu
             </Typography>
           </div>
         </div>
-      </div>
+        </div>
+        </div>
+      )}
     </Container>
   );
 };

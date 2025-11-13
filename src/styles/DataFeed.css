@@ -1,5 +1,14 @@
 /* DataFeed Component Styles */
 
+/* Tab container styles */
+.overview-tab {
+  width: 100%;
+}
+
+.feed-history-tab {
+  width: 100%;
+}
+
 /* Main container styles */
 .datafeed-container {
   display: grid;
@@ -12,6 +21,8 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Oracle Price Feeds Section */
@@ -188,6 +199,7 @@
   backdrop-filter: blur(8px);
   position: relative;
   overflow: hidden;
+  width: 100%;
 }
 
 .analytics-dashboard::before {
