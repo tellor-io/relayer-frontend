@@ -57,7 +57,7 @@ const TestWrapper = ({ children }) => (
 // Simple test component that doesn't use ethers
 const SimpleDataFeed = () => (
   <div>
-    <h1>Tellor Relayer</h1>
+    <h1>Tellor Feeds</h1>
     <div>Sepolia Feeds: ETH/USD</div>
     <div>Saga Feeds: BTC/USD, ETH/USD, SAGA/USD</div>
     <div>Time Scale: recent, daily, weekly, Date Range</div>

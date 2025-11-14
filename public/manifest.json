@@ -1,6 +1,6 @@
 {
-  "short_name": "Tellor Relayer",
-  "name": "Tellor Relayer Price Feed",
+  "short_name": "Tellor Feeds",
+  "name": "Tellor Feeds",
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#000000",
