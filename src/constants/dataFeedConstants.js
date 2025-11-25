@@ -1,19 +1,18 @@
 import React from 'react';
 import { Tooltip } from '@mui/material';
-import { BidirectionalMap } from '../utils/bidirectionalMap';
 // DataBank price pair queryIds (these are the specific feeds we want)
 
-export const DEFAULT_PRICE_PAIRS = {
+export const SEPOLIA_PRICE_PAIRS = {
   'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
   'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',
 }
 
 export const BASE_PRICE_PAIRS = {
-  ...DEFAULT_PRICE_PAIRS,
+  ...SEPOLIA_PRICE_PAIRS,
   'TRB/USD': '0x5c13cd9c97dbb98f2429c101a2a8150e6c7a0ddaff6124ee176a3a411067ded0',
 };
 
-export const DATABANK_PRICE_PAIRS = {
+export const SAGA_PRICE_PAIRS = {
   ...BASE_PRICE_PAIRS,
   'SAGA/USD': '0x74c9cfdfd2e4a00a9437bf93bf6051e18e604a976f3fa37faafe0bb5a039431d',
   'USDC/USD': '0x8ee44cd434ed5b0e007eee581fbe0855336f3f84484e8d9989a620a4a49aa0f7',
@@ -32,10 +31,7 @@ export const DATABANK_PRICE_PAIRS = {
   'sfrxUSD/USD': '0xab30caa3e7827a27c153063bce02c0b260b29c0c164040c003f0f9ec66002510',
   'yETH/USD': '0x9874c1c7b7e76b78afdfdda6dcecef56edf6bf3d49d6d6ef2a98404ea2e04a59',
 };
-export const queryIdToFeedNameMap = new BidirectionalMap();
-Object.entries(DATABANK_PRICE_PAIRS).forEach(([feedName, queryId]) => {
-  queryIdToFeedNameMap.set(feedName, queryId);
-});
+
 // Feed risk assessment mappingc
 export const FEED_RISK_ASSESSMENT = {
   'BTC/USD': 'exemplary',      // 3 bars

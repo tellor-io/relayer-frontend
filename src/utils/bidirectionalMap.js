@@ -5,12 +5,12 @@ export class BidirectionalMap {
   }
   
   set(key, value) {
-    this.keyToValue.set(key.toLowerCase(), value.toLowerCase());
-    this.valueToKey.set(value.toLowerCase(), key.toLowerCase());
+    this.keyToValue.set(key, value.toLowerCase());
+    this.valueToKey.set(value.toLowerCase(), key);
   }
   
   getByKey(key) {
-    return this.keyToValue.get(key.toLowerCase());
+    return this.keyToValue.get(key);
   }
   
   getByValue(value) {
@@ -18,8 +18,8 @@ export class BidirectionalMap {
   }
   
   delete(key) {
-    const value = this.keyToValue.get(key.toLowerCase());
-    this.keyToValue.delete(key.toLowerCase());
+    const value = this.keyToValue.get(key);
+    this.keyToValue.delete(key);
     this.valueToKey.delete(value);
   }
 }

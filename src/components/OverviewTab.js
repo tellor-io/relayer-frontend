@@ -13,7 +13,7 @@ import {
 import { formatReportValue } from "../utils/formatters";
 import { ArrowUpward, ArrowDownward } from "@mui/icons-material";
 import { networks } from "../constants/networks";
-import { DEVIATION_THRESHOLD, queryIdToFeedNameMap } from "../constants/dataFeedConstants";
+import { DEVIATION_THRESHOLD } from "../constants/dataFeedConstants";
 import { getIcon, getNetworkIcon } from '../constants/feedIcons';
 import { HeartbeatTimer } from './HeartbeatTimer';
 
@@ -202,7 +202,8 @@ export const OverviewTab = ({
               (() => {
                 const latestReports = {};
                 overviewData.forEach((data) => {
-                  const feedName = queryIdToFeedNameMap.getByValue(data.queryId)?.toUpperCase() || "ETH/USD";
+                  const feedName = networks[data.network.toUpperCase()].pricePairs.getByValue(data.queryId);
+                  if (!feedName) return;
                   const network = data.network;
                   // Use feedName + network as key to distinguish between networks
                   const key = `${feedName}-${network}`;
@@ -224,13 +225,13 @@ export const OverviewTab = ({
                       compareResult = networkA.localeCompare(networkB);
                       // If networks are equal, sort by feed name as secondary
                       if (compareResult === 0) {
-                        const feedA = queryIdToFeedNameMap.getByValue(a.queryId)?.toUpperCase() || "ETH/USD";
-                        const feedB = queryIdToFeedNameMap.getByValue(b.queryId)?.toUpperCase() || "ETH/USD";
+                        const feedA = networks[a.network.toUpperCase()].pricePairs.getByValue(a.queryId) || "ETH/USD";
+                        const feedB = networks[b.network.toUpperCase()].pricePairs.getByValue(b.queryId) || "ETH/USD";
                         compareResult = feedA.localeCompare(feedB);
                       }
                     } else if (overviewSortColumn === "feed") {
-                      const feedA = queryIdToFeedNameMap.getByValue(a.queryId)?.toUpperCase() || "ETH/USD";
-                      const feedB = queryIdToFeedNameMap.getByValue(b.queryId)?.toUpperCase() || "ETH/USD";
+                      const feedA = networks[a.network.toUpperCase()].pricePairs.getByValue(a.queryId) || "ETH/USD";
+                      const feedB = networks[b.network.toUpperCase()].pricePairs.getByValue(b.queryId) || "ETH/USD";
                       compareResult = feedA.localeCompare(feedB);
                       // If feeds are equal, sort by network as secondary
                       if (compareResult === 0) {
@@ -246,7 +247,7 @@ export const OverviewTab = ({
                       : -compareResult;
                   })
                   .map((data, index) => {
-                    const feedName = queryIdToFeedNameMap.getByValue(data.queryId)?.toUpperCase() || "ETH/USD";
+                    const feedName = networks[data.network.toUpperCase()].pricePairs.getByValue(data.queryId) || "ETH/USD";
                     const network = data.network || "sagaEVM";
                     const networkDisplayName =
                       network === "ethSepolia"

@@ -9,9 +9,9 @@ import {
 } from "../services/grapqlService";
 
 import {
-  DEFAULT_PRICE_PAIRS,
+  SEPOLIA_PRICE_PAIRS,
   BASE_PRICE_PAIRS,
-  DATABANK_PRICE_PAIRS,
+  SAGA_PRICE_PAIRS,
 } from "../constants/dataFeedConstants";
 
 import {
@@ -68,7 +68,7 @@ const DataFeed = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [network, setNetwork] = useState("ethSepolia");
   const [explorer, setExplorer] = useState("https://sepolia.etherscan.io/tx/");
-  const [queryId, setQueryId] = useState(DATABANK_PRICE_PAIRS["ETH/USD"] || "");
+  const [queryId, setQueryId] = useState(SAGA_PRICE_PAIRS["ETH/USD"] || "");
   const [feedName, setFeedName] = useState("ETH/USD");
   const [timeScale, setTimeScale] = useState("recent");
   const [customStartDate, setCustomStartDate] = useState("");
@@ -203,7 +203,7 @@ const DataFeed = () => {
     const newFeedName = event.target.value;
     setNetwork("ethSepolia");
     setFeedName(newFeedName);
-    setQueryId(DATABANK_PRICE_PAIRS[newFeedName]);
+    setQueryId(SAGA_PRICE_PAIRS[newFeedName]);
     setExplorer("https://sepolia.etherscan.io/tx/");
     setCurrentPage(1);
   };
@@ -212,7 +212,7 @@ const DataFeed = () => {
     const newFeedName = event.target.value;
     setNetwork("sagaEVM");
     setFeedName(newFeedName);
-    setQueryId(DATABANK_PRICE_PAIRS[newFeedName]);
+    setQueryId(SAGA_PRICE_PAIRS[newFeedName]);
     setExplorer("https://sagaevm.sagaexplorer.io/tx/");
     setCurrentPage(1);
   };
@@ -221,7 +221,7 @@ const DataFeed = () => {
     const newFeedName = event.target.value;
     setNetwork("baseMainnet");
     setFeedName(newFeedName);
-    setQueryId(DATABANK_PRICE_PAIRS[newFeedName]);
+    setQueryId(SAGA_PRICE_PAIRS[newFeedName]);
     setExplorer("https://basescan.org/tx/");
     setCurrentPage(1);
   };
@@ -274,7 +274,7 @@ const DataFeed = () => {
                     <div>
                       <FeedSelector
                         label="Sepolia Feeds"
-                        pairs={DEFAULT_PRICE_PAIRS}
+                        pairs={SEPOLIA_PRICE_PAIRS}
                         onChange={handleSepoliaClick}
                         value={network === "ethSepolia" ? feedName : ""}
                       />
@@ -290,7 +290,7 @@ const DataFeed = () => {
                     <div>
                       <FeedSelector
                         label="Saga Feeds"
-                        pairs={DATABANK_PRICE_PAIRS}
+                        pairs={SAGA_PRICE_PAIRS}
                         onChange={handleSagaClick}
                         value={network === "sagaEVM" ? feedName : ""}
                       />
