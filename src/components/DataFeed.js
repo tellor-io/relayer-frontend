@@ -73,7 +73,7 @@ const DataFeed = () => {
   const [timeScale, setTimeScale] = useState("recent");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [includeBlockTime, setIncludeBlockTime] = useState(false);
+  const [includeBlockTime, setIncludeBlockTime] = useState(true);
   const [avgBlockTime, setAvgBlockTime] = useState(0);
   const [chartLoading, setChartLoading] = useState(false);
   // Add tab state for switching between data view and analytics
