@@ -134,7 +134,7 @@ export const getNetworkIcon = (network, size = 20) => {
       display: 'inline-block'
     };
 
-    if (network === 'ethSepolia') {
+    if (network === 'ethSepolia' || network === 'ethMainnet') {
       return (
         <img 
           src="/sepolia-logo.png" 

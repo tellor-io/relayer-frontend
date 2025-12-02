@@ -220,9 +220,22 @@ export const OverviewTab = ({
                     let compareResult = 0;
 
                     if (overviewSortColumn === "network") {
-                      const networkA = a.network || "Saga";
-                      const networkB = b.network || "Saga";
-                      compareResult = networkA.localeCompare(networkB);
+                      // Get display names for sorting
+                      const networkA = a.network || "sagaEVM";
+                      const networkDisplayA = 
+                        networkA === "ethSepolia" ? "Sepolia Testnet" :
+                        networkA === "baseMainnet" ? "Base Mainnet" :
+                        networkA === "ethMainnet" ? "Ethereum Mainnet" :
+                        "Saga Mainnet";
+                      
+                      const networkB = b.network || "sagaEVM";
+                      const networkDisplayB = 
+                        networkB === "ethSepolia" ? "Sepolia Testnet" :
+                        networkB === "baseMainnet" ? "Base Mainnet" :
+                        networkB === "ethMainnet" ? "Ethereum Mainnet" :
+                        "Saga Mainnet";
+                      
+                      compareResult = networkDisplayA.localeCompare(networkDisplayB);
                       // If networks are equal, sort by feed name as secondary
                       if (compareResult === 0) {
                         const feedA = networks[a.network.toUpperCase()].pricePairs.getByValue(a.queryId) || "ETH/USD";
@@ -233,11 +246,23 @@ export const OverviewTab = ({
                       const feedA = networks[a.network.toUpperCase()].pricePairs.getByValue(a.queryId) || "ETH/USD";
                       const feedB = networks[b.network.toUpperCase()].pricePairs.getByValue(b.queryId) || "ETH/USD";
                       compareResult = feedA.localeCompare(feedB);
-                      // If feeds are equal, sort by network as secondary
+                      // If feeds are equal, sort by network display names as secondary
                       if (compareResult === 0) {
-                        const networkA = a.network || "Saga";
-                        const networkB = b.network || "Saga";
-                        compareResult = networkA.localeCompare(networkB);
+                        const networkA = a.network || "sagaEVM";
+                        const networkDisplayA = 
+                          networkA === "ethSepolia" ? "Sepolia Testnet" :
+                          networkA === "baseMainnet" ? "Base Mainnet" :
+                          networkA === "ethMainnet" ? "Ethereum Mainnet" :
+                          "Saga Mainnet";
+                        
+                        const networkB = b.network || "sagaEVM";
+                        const networkDisplayB = 
+                          networkB === "ethSepolia" ? "Sepolia Testnet" :
+                          networkB === "baseMainnet" ? "Base Mainnet" :
+                          networkB === "ethMainnet" ? "Ethereum Mainnet" :
+                          "Saga Mainnet";
+                        
+                        compareResult = networkDisplayA.localeCompare(networkDisplayB);
                       }
                     }
 
@@ -254,6 +279,8 @@ export const OverviewTab = ({
                         ? "Sepolia Testnet"
                         : network === "baseMainnet"
                         ? "Base Mainnet"
+                        : network === "ethMainnet"
+                        ? "Ethereum Mainnet"
                         : "Saga Mainnet";
                     return (
                       <TableRow

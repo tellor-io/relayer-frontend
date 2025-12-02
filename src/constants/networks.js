@@ -24,5 +24,10 @@ export const networks = {
     explorerUrl: "https://basescan.org/",
     defaultAvgBlockTime: 2,
     pricePairs: createPairsMap(BASE_PRICE_PAIRS)
+  },
+  "ETHMAINNET": {
+    explorerUrl: "https://etherscan.io/",
+    defaultAvgBlockTime: 12,
+    pricePairs: createPairsMap({'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992'}) // Add ETH Mainnet price pairs here if needed
   }
 };

@@ -226,6 +226,15 @@ const DataFeed = () => {
     setCurrentPage(1);
   };
 
+  const handleEthMainnetClick = (event) => {
+    const newFeedName = event.target.value;
+    setNetwork("ethMainnet");
+    setFeedName(newFeedName);
+    setQueryId(SAGA_PRICE_PAIRS[newFeedName]);
+    setExplorer("https://etherscan.io/tx/");
+    setCurrentPage(1);
+  };
+
   return (
     <Container>
       {/* Header with Logo and Status */}
@@ -271,6 +280,14 @@ const DataFeed = () => {
                       gap: "20px",
                     }}
                   >
+                    <div>
+                      <FeedSelector
+                        label="Ethereum Feeds"
+                        pairs={{'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992'}}
+                        onChange={handleEthMainnetClick}
+                        value={network === "ethMainnet" ? feedName : ""}
+                      />
+                    </div>
                     <div>
                       <FeedSelector
                         label="Sepolia Feeds"
