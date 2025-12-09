@@ -46,10 +46,7 @@ export const HeartbeatTimer = React.memo(({ reportedTimestamp }) => {
   const heartbeat = calculateHeartbeat();
   
   return (
-    <span style={{ 
-      color: heartbeat.expired ? '#ff6b6b' : 'inherit',
-      fontWeight: heartbeat.expired ? 'bold' : 'normal'
-    }}>
+    <span>
       {heartbeat.text}
     </span>
   );

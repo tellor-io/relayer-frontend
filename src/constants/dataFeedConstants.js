@@ -66,47 +66,47 @@ export const RISK_BAR_COUNT = {
 const FEED_TYPE = {
   'BTC/USD': 'market',
   'ETH/USD': 'market',
-  'TRB/USD': 'market',
+  'KING/USD': 'market',
+  'rETH/USD': 'fundamental',
   'SAGA/USD': 'market',
-  'USDC/USD': 'market',
-  'USDT/USD': 'market',
-  'USDN/USD': 'market',
-  'sUSDS/USD': 'market',
-  'yUSD/USD': 'market',
-  'tBTC/USD': 'market',
-  'rETH/USD': 'mix',
-  'wstETH/USD': 'mix',
-  'KING/USD': 'mix',
-  'sUSDe/USD': 'market',
-  'stATOM/USD': 'market',
   'sfrxUSD/USD': 'fundamental',
-  'sUSN/USD': 'market',
+  'stATOM/USD': 'market',
+  'sUSDe/USD': 'fundamental',
+  'sUSDS/USD': 'market',
+  'sUSN/USD': 'fundamental',
+  'tBTC/USD': 'market',
+  'TRB/USD': 'market',
+  'USDC/USD': 'market',
+  'USDN/USD': 'market',
+  'USDT/USD': 'market',
   'vyUSD/USD': 'fundamental',
-  'yETH/USD': 'fundamental'
+  'wstETH/USD': 'fundamental',
+  'yETH/USD': 'fundamental',
+  'yUSD/USD': 'fundamental'
+  // 'mix': commented out - no feeds currently use mix category
 };
 
 // Feed tooltip descriptions
 const FEED_TOOLTIP = {
   'BTC/USD': 'market (7 sources)',
   'ETH/USD': 'market (7 sources)',
-  'TRB/USD': 'market',
+  'KING/USD': 'market',
+  'rETH/USD': 'fundamental rETH/ETH ratio × market median ETH/USD price',
   'SAGA/USD': 'market (4 sources)',
-  'USDC/USD': 'market (7 sources)',
-  'USDT/USD': 'market (3 sources)',
-  'FBTC/USD': 'market (3 sources)',
-  'USDN/USD': 'market (2 sources)',
-  'sUSDS/USD': 'market (1 source)',
-  'yUSD/USD': 'market (2 sources)',
-  'tBTC/USD': 'market (3 sources)',
-  'rETH/USD': 'mix (fundamental as part of median)',
-  'wstETH/USD': 'mix (fundamental as part of median)',
-  'KING/USD': 'mix (fundamental as part of median)',
-  'sUSDe/USD': 'market (2 sources)',
-  'stATOM/USD': 'market (3 sources)',
   'sfrxUSD/USD': 'fundamental sfrxUSD/frxUSD ratio × market median frxUSD/USD price',
-  'sUSN/USD': 'market (1 source)',
+  'stATOM/USD': 'market (3 sources)',
+  'sUSDe/USD': 'fundamental sUSDe/USDe ratio × market median USDe/USD price',
+  'sUSDS/USD': 'market (1 source)',
+  'sUSN/USD': 'fundamental sUSN/USN ratio × market median USN/USD price',
+  'tBTC/USD': 'market (3 sources)',
+  'TRB/USD': 'market',
+  'USDC/USD': 'market (7 sources)',
+  'USDN/USD': 'market (2 sources)',
+  'USDT/USD': 'market (3 sources)',
   'vyUSD/USD': 'fundamental vyUSD/USDC ratio × market median USDC/USD price',
-  'yETH/USD': 'fundamental yeth/eth ratio × market median eth/usd price'
+  'wstETH/USD': 'fundamental wstETH/stETH ratio × market median stETH/USD price',
+  'yETH/USD': 'fundamental yeth/eth ratio × market median eth/usd price',
+  'yUSD/USD': 'fundamental yUSD/USDC ratio × market median USDC/USD price'
 };
 
 // Deviation Threshold mapping
@@ -160,17 +160,19 @@ export const getFeedTypeSymbol = (feedName, color = '#0E5353') => {
         backgroundColor: color,
         flexShrink: 0
       };
-    } else if (feedType === 'mix') {
-      symbolStyle = {
-        width: '7px',
-        height: '7px',
-        borderStyle: 'solid',
-        borderWidth: '2px',
-        borderColor: color,
-        backgroundColor: color,
-        flexShrink: 0
-      };
     }
+    // Mix category commented out - no feeds currently use mix category
+    // else if (feedType === 'mix') {
+    //   symbolStyle = {
+    //     width: '7px',
+    //     height: '7px',
+    //     borderStyle: 'solid',
+    //     borderWidth: '2px',
+    //     borderColor: color,
+    //     backgroundColor: color,
+    //     flexShrink: 0
+    //   };
+    // }
     
     return (
       <Tooltip title={tooltipText} placement="top" arrow>
