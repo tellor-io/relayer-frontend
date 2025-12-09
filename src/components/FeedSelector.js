@@ -42,7 +42,7 @@ export const FeedSelector = ({
           justifyContent: "flex-start",
           flexShrink: 0,
         }}
-        title={`Risk Level: ${
+        title={`BP Rating: ${
           FEED_RISK_ASSESSMENT[pairName] === "exemplary"
             ? "Exemplary (3/3)"
             : FEED_RISK_ASSESSMENT[pairName] === "moderate"

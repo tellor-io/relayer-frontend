@@ -315,7 +315,7 @@ const DataFeed = () => {
                   </div>
 
                   {/* Right Column - Legends */}
-                  <div style={{ display: "flex"}}>
+                  <div style={{ display: "flex", alignItems: "flex-start", height: "100%" }}>
                     <Legends />
                   </div>
                 </div>
