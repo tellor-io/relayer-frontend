@@ -1,25 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Typography,
   Tooltip,
-  Popover,
 } from "@mui/material";
 import { InfoOutlined } from '@mui/icons-material';
 
-
 export const Legends = () => {
-  const [anchorEl, setAnchorEl] = useState(null);
-
-  const handleMouseEnter = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMouseLeave = () => {
-    setAnchorEl(null);
-  };
-
-  const open = Boolean(anchorEl);
-
   return (
     <div
       style={{
@@ -230,8 +216,8 @@ export const Legends = () => {
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: "8px",
+            flexDirection: "column",
+            gap: "4px",
             marginBottom: "12px",
           }}
         >
@@ -245,80 +231,20 @@ export const Legends = () => {
           >
             'Best Practices' Rating:
           </Typography>
-          <>
-            <InfoOutlined
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-              sx={{
-                fontSize: "14px",
-                color: "#0E5353",
-                cursor: "help",
-                opacity: 0.7,
-                "&:hover": {
-                  opacity: 1,
-                },
-              }}
-            />
-            <Popover
-              open={open}
-              anchorEl={anchorEl}
-              onClose={handleMouseLeave}
-              anchorOrigin={{
-                vertical: "bottom",
-                horizontal: "center",
-              }}
-              transformOrigin={{
-                vertical: "top",
-                horizontal: "center",
-              }}
-              PaperProps={{
-                sx: {
-                  bgcolor: "rgba(0, 0, 0, 0.9)",
-                  maxWidth: "min(850px, calc(100vw - 32px))",
-                  margin: "8px",
-                  pointerEvents: "auto",
-                },
-              }}
-              disableRestoreFocus
-            >
-              <div 
-                style={{ padding: "12px", textAlign: "center" }}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-              >
-                <img
-                  src="/BPR.png"
-                  alt="Best Practices Rating Chart"
-                  style={{
-                    maxWidth: "800px",
-                    width: "100%",
-                    height: "auto",
-                    borderRadius: "6px",
-                    display: "block",
-                  }}
-                  onError={(e) => {
-                    e.target.style.display = "none";
-                    e.target.nextSibling.style.display = "block";
-                  }}
-                />
-                <div
-                  style={{
-                    display: "none",
-                    color: "white",
-                    fontSize: "14px",
-                    padding: "20px",
-                    textAlign: "center",
-                  }}
-                >
-                  Best Practices Rating Chart
-                  <br />
-                  <span style={{ fontSize: "12px", opacity: 0.8 }}>
-                    (Add Best-practices-Rating.png to public folder)
-                  </span>
-                </div>
-              </div>
-            </Popover>
-          </>
+          <a
+            href="/BPR.png"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#0E5353",
+              textDecoration: "underline",
+              cursor: "pointer",
+              fontSize: "11px",
+              fontWeight: "normal",
+            }}
+          >
+            click to see ratings chart
+          </a>
         </div>
         <div
           style={{
