@@ -226,14 +226,14 @@ export const OverviewTab = ({
                         networkA === "ethSepolia" ? "Sepolia Testnet" :
                         networkA === "baseMainnet" ? "Base Mainnet" :
                         networkA === "ethMainnet" ? "Ethereum Mainnet" :
-                        "Saga Mainnet";
+                        "SagaEVM Mainnet";
                       
                       const networkB = b.network || "sagaEVM";
                       const networkDisplayB = 
                         networkB === "ethSepolia" ? "Sepolia Testnet" :
                         networkB === "baseMainnet" ? "Base Mainnet" :
                         networkB === "ethMainnet" ? "Ethereum Mainnet" :
-                        "Saga Mainnet";
+                        "SagaEVM Mainnet";
                       
                       compareResult = networkDisplayA.localeCompare(networkDisplayB);
                       // If networks are equal, sort by feed name as secondary
@@ -253,14 +253,14 @@ export const OverviewTab = ({
                           networkA === "ethSepolia" ? "Sepolia Testnet" :
                           networkA === "baseMainnet" ? "Base Mainnet" :
                           networkA === "ethMainnet" ? "Ethereum Mainnet" :
-                          "Saga Mainnet";
+                          "SagaEVM Mainnet";
                         
                         const networkB = b.network || "sagaEVM";
                         const networkDisplayB = 
                           networkB === "ethSepolia" ? "Sepolia Testnet" :
                           networkB === "baseMainnet" ? "Base Mainnet" :
                           networkB === "ethMainnet" ? "Ethereum Mainnet" :
-                          "Saga Mainnet";
+                          "SagaEVM Mainnet";
                         
                         compareResult = networkDisplayA.localeCompare(networkDisplayB);
                       }
@@ -281,7 +281,7 @@ export const OverviewTab = ({
                         ? "Base Mainnet"
                         : network === "ethMainnet"
                         ? "Ethereum Mainnet"
-                        : "Saga Mainnet";
+                        : "SagaEVM Mainnet";
                     return (
                       <TableRow
                         key={index}
