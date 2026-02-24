@@ -1,4 +1,4 @@
-import { convertHexToDecimal } from "../utils/formatters";
+import { convertHexToDecimal, pickPointsAtTargetTimes } from "../utils/formatters";
 
 export const preparePriceChartData = (
   dataset,
@@ -14,13 +14,13 @@ export const preparePriceChartData = (
 
   switch (timeScale) {
     case "recent": {
-      const last10Entries = data.slice(-10);
+      // Last 10 data points
+      const recentData = data.slice(-10);
 
-      const prices = last10Entries.map((item) => {
+      const prices = recentData.map((item) => {
         return convertHexToDecimal(item.reportValue.toString());
       });
 
-      // Calculate rolling average for benchmark line
       const rollingAverages = prices.map((_, index) => {
         const subset = prices.slice(0, index + 1);
         const validPrices = subset.filter(
@@ -31,12 +31,11 @@ export const preparePriceChartData = (
             ? validPrices.reduce((sum, price) => sum + price, 0) /
               validPrices.length
             : 0;
-        // Round to 2 decimal places for consistent precision
         return Math.round(avg * 100) / 100;
       });
 
       processedData = {
-        labels: last10Entries.map((item) =>
+        labels: recentData.map((item) =>
           new Date(item.reportTimestamp).toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "numeric",
@@ -50,20 +49,16 @@ export const preparePriceChartData = (
     }
 
     case "daily": {
-      // Get all data points from the last 7 days
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-      let recentData = data.filter((item) => {
-        const itemDate = new Date(item.reportTimestamp);
-        return itemDate >= sevenDaysAgo;
-      });
-
-      // Limit to max 100 points to prevent overcrowding
-      if (recentData.length > 100) {
-        const step = Math.ceil(recentData.length / 100);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Last 10 days, one point per day at same timestamp (noon UTC)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const prices = recentData.map((item) => {
         return convertHexToDecimal(item.reportValue.toString());
@@ -98,20 +93,16 @@ export const preparePriceChartData = (
     }
 
     case "weekly": {
-      // Get all data points from the last 4 weeks
-      const fourWeeksAgo = new Date();
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-      let recentData = data.filter((item) => {
-        const itemDate = new Date(item.reportTimestamp);
-        return itemDate >= fourWeeksAgo;
-      });
-
-      // Limit to max 200 points to prevent overcrowding
-      if (recentData.length > 200) {
-        const step = Math.ceil(recentData.length / 200);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Last 10 weeks, one point per week at same timestamp (noon UTC, same day)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i * 7);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const prices = recentData.map((item) => {
         return convertHexToDecimal(item.reportValue.toString());
@@ -148,20 +139,16 @@ export const preparePriceChartData = (
     case "custom": {
       // Handle custom date range
       if (!customStartDate || !customEndDate) {
-        // If no custom dates set, fall back to weekly view
-        const fourWeeksAgo = new Date();
-        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-        let recentData = data.filter((item) => {
-          const timestamp = Number(item.reportTimestamp);
-          const itemDate = timestamp < 10000000000 ? new Date(timestamp * 1000) : new Date(timestamp);
-          return itemDate >= fourWeeksAgo;
-        });
-
-        if (recentData.length > 200) {
-          const step = Math.ceil(recentData.length / 200);
-          recentData = recentData.filter((_, index) => index % step === 0);
+        // If no custom dates set, fall back to weekly view (10 weeks, same timestamp)
+        const targetTimestamps = [];
+        const now = new Date();
+        for (let i = 9; i >= 0; i--) {
+          const d = new Date(now);
+          d.setUTCDate(d.getUTCDate() - i * 7);
+          d.setUTCHours(12, 0, 0, 0);
+          targetTimestamps.push(d.getTime());
         }
+        const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
         const prices = recentData.map((item) => {
           return convertHexToDecimal(item.reportValue.toString());
@@ -245,18 +232,16 @@ export const preparePriceChartData = (
     }
 
     default: {
-      // Fall back to weekly view for any unexpected timeScale
-      const fourWeeksAgo = new Date();
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-      let recentData = data.filter(
-        (item) => new Date(item.reportTimestamp) >= fourWeeksAgo
-      );
-
-      if (recentData.length > 200) {
-        const step = Math.ceil(recentData.length / 200);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Fall back to weekly view for any unexpected timeScale (10 weeks, same timestamp)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i * 7);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const prices = recentData.map((item) => {
         return convertHexToDecimal(item.reportValue.toString());

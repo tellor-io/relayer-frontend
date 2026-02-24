@@ -13,9 +13,15 @@ import {
 import { formatReportValue } from "../utils/formatters";
 import { ArrowUpward, ArrowDownward } from "@mui/icons-material";
 import { networks } from "../constants/networks";
-import { DEVIATION_THRESHOLD } from "../constants/dataFeedConstants";
+import { DEVIATION_THRESHOLD, HIDE_SAGA_FEEDS } from "../constants/dataFeedConstants";
 import { getIcon, getNetworkIcon } from '../constants/feedIcons';
 import { HeartbeatTimer } from './HeartbeatTimer';
+
+// Network sort order: testnets next to their mainnets (Ethereum+Sepolia, then Base, then Saga)
+const NETWORK_SORT_ORDER = { ethMainnet: 0, ethSepolia: 1, baseMainnet: 2, sagaEVM: 3 };
+function networkSortRank(network) {
+  return NETWORK_SORT_ORDER[network] ?? 4;
+}
 
 export const OverviewTab = ({
   overviewData,
@@ -202,6 +208,7 @@ export const OverviewTab = ({
               (() => {
                 const latestReports = {};
                 overviewData.forEach((data) => {
+                  if (HIDE_SAGA_FEEDS && data.network?.toLowerCase() === 'sagaevm') return;
                   const feedName = networks[data.network.toUpperCase()].pricePairs.getByValue(data.queryId);
                   if (!feedName) return;
                   const network = data.network;
@@ -220,23 +227,11 @@ export const OverviewTab = ({
                     let compareResult = 0;
 
                     if (overviewSortColumn === "network") {
-                      // Get display names for sorting
-                      const networkA = a.network || "sagaEVM";
-                      const networkDisplayA = 
-                        networkA === "ethSepolia" ? "Sepolia Testnet" :
-                        networkA === "baseMainnet" ? "Base Mainnet" :
-                        networkA === "ethMainnet" ? "Ethereum Mainnet" :
-                        "SagaEVM Mainnet";
-                      
-                      const networkB = b.network || "sagaEVM";
-                      const networkDisplayB = 
-                        networkB === "ethSepolia" ? "Sepolia Testnet" :
-                        networkB === "baseMainnet" ? "Base Mainnet" :
-                        networkB === "ethMainnet" ? "Ethereum Mainnet" :
-                        "SagaEVM Mainnet";
-                      
-                      compareResult = networkDisplayA.localeCompare(networkDisplayB);
-                      // If networks are equal, sort by feed name as secondary
+                      // Custom order: Ethereum Mainnet, Sepolia Testnet, Base Mainnet, SagaEVM Mainnet
+                      const rankA = networkSortRank(a.network);
+                      const rankB = networkSortRank(b.network);
+                      compareResult = rankA - rankB;
+                      // If same network, sort by feed name as secondary
                       if (compareResult === 0) {
                         const feedA = networks[a.network.toUpperCase()].pricePairs.getByValue(a.queryId) || "ETH/USD";
                         const feedB = networks[b.network.toUpperCase()].pricePairs.getByValue(b.queryId) || "ETH/USD";
@@ -249,20 +244,8 @@ export const OverviewTab = ({
                       // If feeds are equal, sort by network display names as secondary
                       if (compareResult === 0) {
                         const networkA = a.network || "sagaEVM";
-                        const networkDisplayA = 
-                          networkA === "ethSepolia" ? "Sepolia Testnet" :
-                          networkA === "baseMainnet" ? "Base Mainnet" :
-                          networkA === "ethMainnet" ? "Ethereum Mainnet" :
-                          "SagaEVM Mainnet";
-                        
                         const networkB = b.network || "sagaEVM";
-                        const networkDisplayB = 
-                          networkB === "ethSepolia" ? "Sepolia Testnet" :
-                          networkB === "baseMainnet" ? "Base Mainnet" :
-                          networkB === "ethMainnet" ? "Ethereum Mainnet" :
-                          "SagaEVM Mainnet";
-                        
-                        compareResult = networkDisplayA.localeCompare(networkDisplayB);
+                        compareResult = networkSortRank(networkA) - networkSortRank(networkB);
                       }
                     }
 

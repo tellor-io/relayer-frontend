@@ -1,4 +1,7 @@
-import { calculateTimeDifferenceFormatted } from "../utils/formatters";
+import {
+  calculateTimeDifferenceFormatted,
+  pickPointsAtTargetTimes,
+} from "../utils/formatters";
 
 export const prepareRollingAverageChart = (
   dataset,
@@ -14,22 +17,17 @@ export const prepareRollingAverageChart = (
   let processedData;
   switch (timeScale) {
     case "recent": {
-      const last10Entries = data.slice(-10);
-      const delays = last10Entries.map((item) => {
-        let timeDiff = calculateTimeDifferenceFormatted(
-          item.reportTimestamp,
-          item.relayTimestamp
-        );
-        let delay = parseFloat(timeDiff);
-        if (timeDiff.includes("m")) {
-          const [min, sec] = timeDiff.split("m");
-          delay = parseInt(min) * 60 + parseFloat(sec.replace("s", ""));
-        }
-        // Subtract block time if enabled
+      // Last 10 data points
+      const recentData = data.slice(-10);
+
+      const delays = recentData.map((item) => {
+        const reportDate = new Date(item.reportTimestamp);
+        const relayDate = new Date(item.relayTimestamp);
+        let delayInSeconds = (relayDate - reportDate) / 1000;
         if (includeBlockTime && avgBlockTime > 0) {
-          delay = Math.max(0, delay - avgBlockTime);
+          delayInSeconds = Math.max(0, delayInSeconds - avgBlockTime);
         }
-        return delay;
+        return delayInSeconds;
       });
 
       const rollingAverages = delays.map((_, index) => {
@@ -38,7 +36,7 @@ export const prepareRollingAverageChart = (
       });
 
       processedData = {
-        labels: last10Entries.map((item) =>
+        labels: recentData.map((item) =>
           new Date(item.reportTimestamp).toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "numeric",
@@ -51,37 +49,30 @@ export const prepareRollingAverageChart = (
       break;
     }
     case "daily": {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      // Get all data points from the last 7 days
-      let recentData = data.filter((item) => {
-        const itemDate = new Date(item.reportTimestamp);
-        return itemDate >= sevenDaysAgo;
-      });
-      
-      // Limit to max 100 points to prevent overcrowding
-      if (recentData.length > 100) {
-        const step = Math.ceil(recentData.length / 100);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Last 10 days, one point per day at same timestamp (noon UTC)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const delays = recentData.map((item) => {
         const reportDate = new Date(item.reportTimestamp);
         const relayDate = new Date(item.relayTimestamp);
         let delayInSeconds = (relayDate - reportDate) / 1000;
-        // Subtract block time if enabled
         if (includeBlockTime && avgBlockTime > 0) {
           delayInSeconds = Math.max(0, delayInSeconds - avgBlockTime);
         }
         return delayInSeconds;
       });
 
-      // Calculate rolling average for benchmark line
-      let runningSum = 0;
-      const rollingAverages = delays.map((delay, index) => {
-        runningSum += delay;
-        return runningSum / (index + 1);
+      const rollingAverages = delays.map((_, index) => {
+        const subset = delays.slice(0, index + 1);
+        return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
       });
 
       processedData = {
@@ -101,39 +92,27 @@ export const prepareRollingAverageChart = (
       break;
     }
     case "weekly": {
-      // Get all data points from the last 4 weeks
-      const fourWeeksAgo = new Date();
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-      let recentData = data.filter((item) => {
-        const itemDate = new Date(item.reportTimestamp);
-        return itemDate >= fourWeeksAgo;
-      });
-
-      // Limit to max 200 points to prevent overcrowding
-      if (recentData.length > 200) {
-        const step = Math.ceil(recentData.length / 200);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Last 10 weeks, one point per week at same timestamp (noon UTC, same day)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i * 7);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const delays = recentData.map((item) => {
-        let timeDiff = calculateTimeDifferenceFormatted(
-          item.reportTimestamp,
-          item.relayTimestamp
-        );
-        let delay = parseFloat(timeDiff);
-        if (timeDiff.includes("m")) {
-          const [min, sec] = timeDiff.split("m");
-          delay = parseInt(min) * 60 + parseFloat(sec.replace("s", ""));
-        }
-        // Subtract block time if enabled
+        const reportDate = new Date(item.reportTimestamp);
+        const relayDate = new Date(item.relayTimestamp);
+        let delayInSeconds = (relayDate - reportDate) / 1000;
         if (includeBlockTime && avgBlockTime > 0) {
-          delay = Math.max(0, delay - avgBlockTime);
+          delayInSeconds = Math.max(0, delayInSeconds - avgBlockTime);
         }
-        return delay;
+        return delayInSeconds;
       });
 
-      // Calculate rolling average for benchmark line
       const rollingAverages = delays.map((_, index) => {
         const subset = delays.slice(0, index + 1);
         return subset.reduce((sum, delay) => sum + delay, 0) / subset.length;
@@ -156,37 +135,27 @@ export const prepareRollingAverageChart = (
       break;
     }
     case "custom": {
-      console.log("Processing custom date range in chart:", {
-        dataLength: dataset?.length,
-        customStartDate,
-        customEndDate
-      });
       // Handle custom date range
       if (!customStartDate || !customEndDate) {
-        // If no custom dates set, fall back to weekly view
-        const fourWeeksAgo = new Date();
-        fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-        let recentData = data.filter(
-          (item) => new Date(item.reportTimestamp) >= fourWeeksAgo
-        );
-
-        if (recentData.length > 200) {
-          const step = Math.ceil(recentData.length / 200);
-          recentData = recentData.filter((_, index) => index % step === 0);
+        // If no custom dates set, fall back to weekly view (10 weeks, same timestamp)
+        const targetTimestamps = [];
+        const now = new Date();
+        for (let i = 9; i >= 0; i--) {
+          const d = new Date(now);
+          d.setUTCDate(d.getUTCDate() - i * 7);
+          d.setUTCHours(12, 0, 0, 0);
+          targetTimestamps.push(d.getTime());
         }
+        const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
         const delays = recentData.map((item) => {
-          let timeDiff = calculateTimeDifferenceFormatted(
-            item.reportTimestamp,
-            item.relayTimestamp
-          );
-          let delay = parseFloat(timeDiff);
-          if (timeDiff.includes("m")) {
-            const [min, sec] = timeDiff.split("m");
-            delay = parseInt(min) * 60 + parseFloat(sec.replace("s", ""));
+          const reportDate = new Date(item.reportTimestamp);
+          const relayDate = new Date(item.relayTimestamp);
+          let delayInSeconds = (relayDate - reportDate) / 1000;
+          if (includeBlockTime && avgBlockTime > 0) {
+            delayInSeconds = Math.max(0, delayInSeconds - avgBlockTime);
           }
-          return delay;
+          return delayInSeconds;
         });
 
         const rollingAverages = delays.map((_, index) => {
@@ -263,34 +232,25 @@ export const prepareRollingAverageChart = (
       break;
     }
     default: {
-      // Fall back to weekly view for any unexpected timeScale
-      const fourWeeksAgo = new Date();
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-
-      let recentData = data.filter(
-        (item) => new Date(item.reportTimestamp) >= fourWeeksAgo
-      );
-
-      if (recentData.length > 200) {
-        const step = Math.ceil(recentData.length / 200);
-        recentData = recentData.filter((_, index) => index % step === 0);
+      // Fall back to weekly view for any unexpected timeScale (10 weeks, same timestamp)
+      const targetTimestamps = [];
+      const now = new Date();
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date(now);
+        d.setUTCDate(d.getUTCDate() - i * 7);
+        d.setUTCHours(12, 0, 0, 0);
+        targetTimestamps.push(d.getTime());
       }
+      const recentData = pickPointsAtTargetTimes(data, targetTimestamps);
 
       const delays = recentData.map((item) => {
-        let timeDiff = calculateTimeDifferenceFormatted(
-          item.reportTimestamp,
-          item.relayTimestamp
-        );
-        let delay = parseFloat(timeDiff);
-        if (timeDiff.includes("m")) {
-          const [min, sec] = timeDiff.split("m");
-          delay = parseInt(min) * 60 + parseFloat(sec.replace("s", ""));
-        }
-        // Subtract block time if enabled
+        const reportDate = new Date(item.reportTimestamp);
+        const relayDate = new Date(item.relayTimestamp);
+        let delayInSeconds = (relayDate - reportDate) / 1000;
         if (includeBlockTime && avgBlockTime > 0) {
-          delay = Math.max(0, delay - avgBlockTime);
+          delayInSeconds = Math.max(0, delayInSeconds - avgBlockTime);
         }
-        return delay;
+        return delayInSeconds;
       });
 
       const rollingAverages = delays.map((_, index) => {
@@ -331,9 +291,9 @@ export const prepareRollingAverageChart = (
         tension: 0,
       },
       {
-        label: `${timeScale === "recent" ? "Current" : "Individual"} Delay${
+        label: `${timeScale === "recent" ? "Current" : "Current"} Delay${
           includeBlockTime ? " (Block Time Adj.)" : ""
-        } (seconds)`,
+        } (sec)`,
         data: processedData.delays,
         borderColor: "#00b96f",
         backgroundColor: "rgba(0, 185, 111, 0.2)",

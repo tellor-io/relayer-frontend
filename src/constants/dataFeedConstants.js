@@ -2,6 +2,9 @@ import React from 'react';
 import { Tooltip } from '@mui/material';
 // DataBank price pair queryIds (these are the specific feeds we want)
 
+// Feature flag: set to false to show SagaEVM feeds
+export const HIDE_SAGA_FEEDS = false;
+
 export const SEPOLIA_PRICE_PAIRS = {
   'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
   'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',

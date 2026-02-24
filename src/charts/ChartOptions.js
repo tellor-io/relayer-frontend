@@ -1,6 +1,11 @@
 import { formatPrice } from "../utils/formatters";
 
-export const getChartOptions = (timeScale, includeBlockTime) => {
+export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
+  const yMax =
+    maxDelay != null && maxDelay > 0
+      ? Math.max(60, Math.ceil(maxDelay / 20) * 20)
+      : 60;
+
   return {
     responsive: true,
     interaction: {
@@ -34,8 +39,12 @@ export const getChartOptions = (timeScale, includeBlockTime) => {
     scales: {
       y: {
         beginAtZero: true,
+        min: 0,
+        max: yMax,
         ticks: {
           color: "#0E5353",
+          stepSize: 20,
+          autoSkip: false,
           callback: function (value) {
             return value.toFixed(1) + "s";
           },
