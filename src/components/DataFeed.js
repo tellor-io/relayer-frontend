@@ -12,6 +12,7 @@ import {
   SEPOLIA_PRICE_PAIRS,
   BASE_PRICE_PAIRS,
   SAGA_PRICE_PAIRS,
+  HIDE_SAGA_FEEDS,
 } from "../constants/dataFeedConstants";
 
 import {
@@ -131,23 +132,24 @@ const DataFeed = () => {
         const now = Math.floor(Date.now() / 1000);
         switch (timeScale) {
           case "recent": {
-            setChartData(data);
-            setChartLoading(false);
-            return;
+            // Fetch enough data to get last 10 points (30 days covers sparse feeds)
+            const thirtyDaysInSeconds = 30 * 24 * 3600;
+            startTs = now - thirtyDaysInSeconds;
+            const newData = await getChartData(queryId, network, startTs, now);
+            setChartData(newData);
+            break;
           }
           case "daily": {
-            const sevenDaysInHours = 24 * 7;
-            startTs = now - sevenDaysInHours * 3600;
-
+            const tenDaysInHours = 24 * 10;
+            startTs = now - tenDaysInHours * 3600;
             const newData = await getChartData(queryId, network, startTs, now);
             setChartData(newData);
             break;
           }
           case "weekly": {
-            const thirtyDaysInHours = 24 * 30;
-            startTs = now - thirtyDaysInHours * 3600;
+            const tenWeeksInHours = 24 * 7 * 10;
+            startTs = now - tenWeeksInHours * 3600;
             const newData = await getChartData(queryId, network, startTs, now);
-
             setChartData(newData);
             break;
           }
@@ -179,7 +181,7 @@ const DataFeed = () => {
     }
 
     fetchChartData();
-  }, [timeScale, customStartDate, customEndDate, queryId, network, data]);
+  }, [timeScale, customStartDate, customEndDate, queryId, network]);
 
 
   useEffect(() => {
@@ -296,20 +298,22 @@ const DataFeed = () => {
                         value={network === "ethSepolia" ? feedName : ""}
                       />
                     </div>
-                    <div>
-                      <FeedSelector
-                        label="Base Feeds"
-                        pairs={BASE_PRICE_PAIRS}
-                        onChange={handleBaseClick}
-                        value={network === "baseMainnet" ? feedName : ""}
-                      />
-                    </div>
+                    {!HIDE_SAGA_FEEDS && (
                     <div>
                       <FeedSelector
                         label="Saga Feeds"
                         pairs={SAGA_PRICE_PAIRS}
                         onChange={handleSagaClick}
                         value={network === "sagaEVM" ? feedName : ""}
+                      />
+                    </div>
+                    )}
+                    <div>
+                      <FeedSelector
+                        label="Base Feeds"
+                        pairs={BASE_PRICE_PAIRS}
+                        onChange={handleBaseClick}
+                        value={network === "baseMainnet" ? feedName : ""}
                       />
                     </div>
                   </div>
@@ -465,20 +469,35 @@ const DataFeed = () => {
                       <div>Loading chart data...</div>
                     </div>
                   ) : (
-                    <Line
-                      options={{
-                        ...getChartOptions(timeScale, includeBlockTime),
-                        maintainAspectRatio: false,
-                      }}
-                      data={prepareRollingAverageChart(
+                    (() => {
+                      const delayChartData = prepareRollingAverageChart(
                         chartData,
                         timeScale,
                         includeBlockTime,
                         customStartDate,
                         customEndDate,
                         avgBlockTime
-                      )}
-                    />
+                      );
+                      const delayValues =
+                        delayChartData.datasets?.[1]?.data ?? [];
+                      const maxDelay =
+                        delayValues.length > 0
+                          ? Math.max(...delayValues)
+                          : null;
+                      return (
+                        <Line
+                          options={{
+                            ...getChartOptions(
+                              timeScale,
+                              includeBlockTime,
+                              maxDelay
+                            ),
+                            maintainAspectRatio: false,
+                          }}
+                          data={delayChartData}
+                        />
+                      );
+                    })()
                   )}
                 </div>
 

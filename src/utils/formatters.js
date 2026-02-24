@@ -51,6 +51,28 @@ export const convertTimestampToLocaleString = (timestamp) => {
     hour12: true,
   });
 };
+/**
+ * For each target timestamp, finds the data point with reportTimestamp closest to it.
+ * Returns array of items in target order (oldest first). Skips targets with no data.
+ */
+export const pickPointsAtTargetTimes = (data, targetTimestamps) => {
+  return targetTimestamps
+    .map((targetTs) => {
+      let closest = null;
+      let minDist = Infinity;
+      for (const item of data) {
+        const itemTs = new Date(item.reportTimestamp).getTime();
+        const dist = Math.abs(itemTs - targetTs);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = item;
+        }
+      }
+      return closest;
+    })
+    .filter(Boolean);
+};
+
 // Format price with dollar sign, commas, and two decimal places
 export const formatPrice = (value) => {
     if (isNaN(value) || value === null || value === undefined) return "$0.00";
