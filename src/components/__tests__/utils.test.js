@@ -178,9 +178,10 @@ describe('Utility Functions', () => {
     });
 
     test('processes daily data correctly', () => {
+      const now = new Date();
       const mockData = [
-        { timestamp: '2024-01-01T12:00:00Z', timeDifference: '5.0s' },
-        { timestamp: '2024-01-01T12:01:00Z', timeDifference: '6.0s' }
+        { timestamp: new Date(now.getTime() - 3600000).toISOString(), timeDifference: '5.0s' },
+        { timestamp: new Date(now.getTime() - 1800000).toISOString(), timeDifference: '6.0s' }
       ];
 
       const result = processDataForChart(mockData, 'daily');
@@ -218,7 +219,7 @@ describe('Utility Functions', () => {
       const endBlock = { number: 1100, timestamp: 1012000 };
       
       const result = calculateBlockTime(startBlock, endBlock);
-      expect(result).toBe(12); // 12000 seconds / 100 blocks = 12 seconds per block
+      expect(result).toBe(120);
     });
 
     test('handles zero block difference', () => {

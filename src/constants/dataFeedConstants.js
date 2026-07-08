@@ -3,16 +3,28 @@ import { Tooltip } from '@mui/material';
 // DataBank price pair queryIds (these are the specific feeds we want)
 
 // Feature flag: set to false to show SagaEVM feeds
-export const HIDE_SAGA_FEEDS = false;
+export const HIDE_SAGA_FEEDS = true;
+
+// Feature flag: set to false to show delay performance chart on analytics
+export const HIDE_DELAY_CHART = true;
 
 export const SEPOLIA_PRICE_PAIRS = {
   'BTC/USD': '0xa6f013ee236804827b77696d350e9f0ac3e879328f2a3021d473a0b778ad78ac',
   'ETH/USD': '0x83a7f3d48786ac2667503a61e8c415438ed2922eb86a2906e4ee66d9a2ce4992',
+  'USDC/USD': '0x8ee44cd434ed5b0e007eee581fbe0855336f3f84484e8d9989a620a4a49aa0f7',
+
 }
 
 export const BASE_PRICE_PAIRS = {
   ...SEPOLIA_PRICE_PAIRS,
   'TRB/USD': '0x5c13cd9c97dbb98f2429c101a2a8150e6c7a0ddaff6124ee176a3a411067ded0',
+  'USDT/USD': '0x68a37787e65e85768d4aa6e385fb15760d46df0f67a18ec032d8fd5848aca264',
+  'tBTC/USD': '0x76b504e33305a63a3b80686c0b7bb99e7697466927ba78e224728e80bfaaa0be',
+  'sUSDe/USD': '0x03731257e35c49e44b267640126358e5decebdd8f18b5e8f229542ec86e318cf',
+  'sfrxUSD/USD': '0xab30caa3e7827a27c153063bce02c0b260b29c0c164040c003f0f9ec66002510',
+  'rETH/USD': '0x0bc2d41117ae8779da7623ee76a109c88b84b9bf4d9b404524df04f7d0ca4ca7',
+  'wstETH/USD': '0x1962cde2f19178fe2bb2229e78a6d386e6406979edc7b9a1966d89d83b3ebf2e',
+
 };
 
 export const SAGA_PRICE_PAIRS = {
@@ -139,7 +151,7 @@ export const DEVIATION_THRESHOLD = {
   'yUSD/USD': '2.00%'
 };
 
-export const getFeedTypeSymbol = (feedName, color = '#0E5353') => {
+export const getFeedTypeSymbol = (feedName, color = '#003734') => {
     const feedType = FEED_TYPE[feedName];
     const tooltipText = FEED_TOOLTIP[feedName] || '';
     

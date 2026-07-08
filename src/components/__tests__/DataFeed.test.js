@@ -1,6 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider } from '@mui/material/styles';
+import { createTellorTheme } from '../../theme/tellorTheme';
+import { ThemeModeContext } from '../../context/ThemeModeContext';
 
 // Mock Chart.js
 jest.mock('react-chartjs-2', () => ({
@@ -37,21 +39,14 @@ jest.mock('ethers', () => ({
 }));
 
 // Create a test theme
-const testTheme = createTheme({
-  palette: {
-    mode: 'dark',
-    background: {
-      default: '#f6f7f9',
-      paper: '#0E5353'
-    }
-  }
-});
+const testTheme = createTellorTheme('light');
 
-// Wrapper component for testing
 const TestWrapper = ({ children }) => (
-  <ThemeProvider theme={testTheme}>
-    {children}
-  </ThemeProvider>
+  <ThemeModeContext.Provider value={{ mode: 'light', toggleTheme: jest.fn() }}>
+    <ThemeProvider theme={testTheme}>
+      {children}
+    </ThemeProvider>
+  </ThemeModeContext.Provider>
 );
 
 // Simple test component that doesn't use ethers
@@ -75,7 +70,7 @@ describe('DataFeed Component Structure', () => {
       </TestWrapper>
     );
     
-    expect(screen.getByText('Tellor Relayer')).toBeInTheDocument();
+    expect(screen.getByText('Tellor Feeds')).toBeInTheDocument();
     expect(screen.getByText('Sepolia Feeds: ETH/USD')).toBeInTheDocument();
     expect(screen.getByText('Saga Feeds: BTC/USD, ETH/USD, SAGA/USD')).toBeInTheDocument();
   });
@@ -155,7 +150,7 @@ describe('Accessibility', () => {
     
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading).toBeInTheDocument();
-    expect(heading.textContent).toBe('Tellor Relayer');
+    expect(heading.textContent).toBe('Tellor Feeds');
   });
 
   test('has navigation role', () => {
@@ -179,7 +174,7 @@ describe('Component Integration', () => {
     );
     
     // Should render without errors
-    expect(screen.getByText('Tellor Relayer')).toBeInTheDocument();
+    expect(screen.getByText('Tellor Feeds')).toBeInTheDocument();
   });
 
   test('handles theme context properly', () => {
@@ -197,6 +192,6 @@ describe('Component Integration', () => {
     );
     
     // Should still work
-    expect(screen.getByText('Tellor Relayer')).toBeInTheDocument();
+    expect(screen.getByText('Tellor Feeds')).toBeInTheDocument();
   });
 });

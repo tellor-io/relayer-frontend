@@ -1,5 +1,39 @@
 /* DataFeed Component Styles */
 
+/* App-level color variables (Tellor tokens) */
+:root,
+[data-theme="light"] {
+  --primary-color: var(--pine-950);
+  --secondary-color: var(--emerald-500);
+  --delay-chart-primary: var(--emerald-500);
+  --delay-chart-secondary: var(--opal-600);
+  --price-chart-primary: var(--emerald-500);
+  --price-chart-secondary: var(--pine-700);
+  --background-overlay: var(--opal-100);
+  --border-color: var(--opal-200);
+  --text-color: var(--pine-950);
+  --panel-bg: var(--opal-100);
+  --hover-bg: var(--opal-100);
+  --active-btn-bg: var(--m-active-bg);
+  --active-btn-fg: var(--m-active-fg);
+}
+
+[data-theme="dark"] {
+  --primary-color: var(--pine-50);
+  --secondary-color: var(--emerald-300);
+  --delay-chart-primary: var(--emerald-300);
+  --delay-chart-secondary: var(--neptune-300);
+  --price-chart-primary: var(--emerald-300);
+  --price-chart-secondary: var(--pine-700);
+  --background-overlay: rgba(255, 255, 255, 0.04);
+  --border-color: var(--m-border);
+  --text-color: var(--pine-50);
+  --panel-bg: var(--m-surface-2);
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  --active-btn-bg: var(--m-active-bg);
+  --active-btn-fg: var(--m-active-fg);
+}
+
 /* Tab container styles */
 .overview-tab {
   width: 100%;
@@ -28,8 +62,9 @@
 /* Oracle Price Feeds Section */
 .price-feeds-container {
   padding: 20px;
-  background-color: rgba(14, 83, 83, 0.1);
-  border-radius: 8px;
+  background-color: var(--m-surface-2);
+  border-radius: 16px;
+  border: 1px solid var(--m-border-soft);
   width: 100%;
 }
 
@@ -39,13 +74,9 @@
   gap: 20px;
 }
 
-.feed-section {
-  /* Base styling for feed sections */
-}
-
 .feed-section-title {
-  color: #0E5353;
-  font-weight: bold;
+  color: var(--m-fg);
+  font-weight: 600;
   margin-bottom: 16px;
   font-size: 14px;
 }
@@ -71,18 +102,18 @@
   min-width: 150px;
   padding: 8px 16px;
   text-transform: none;
-  border: 2px solid #0E5353;
-  border-radius: 4px;
+  border: 1px solid var(--m-border);
+  border-radius: 9999px;
   cursor: pointer;
   font-size: 12px;
-  transition: all 0.2s ease;
+  transition: all 0.12s var(--ease-standard);
   background-color: transparent;
-  color: #0E5353;
-  font-weight: normal;
+  color: var(--m-fg);
+  font-weight: 500;
 }
 
 .feed-button:hover:not(:disabled) {
-  background-color: rgba(14, 83, 83, 0.1);
+  background-color: var(--hover-bg);
 }
 
 .feed-button:disabled {
@@ -91,13 +122,14 @@
 }
 
 .feed-button.active {
-  background-color: #0E5353;
-  color: white;
-  font-weight: bold;
+  background-color: var(--active-btn-bg);
+  color: var(--active-btn-fg);
+  font-weight: 600;
+  border-color: transparent;
 }
 
 .feed-button.active:hover {
-  background-color: #0E5353;
+  background-color: var(--active-btn-bg);
 }
 
 .feed-button-saga {
@@ -113,8 +145,8 @@
 
 /* Data Feed Section */
 .data-feed-container {
-  background-color: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
+  background-color: var(--m-surface);
+  border-radius: 16px;
   width: 100%;
   max-width: fit-content;
 }
@@ -122,9 +154,9 @@
 .incremental-loading {
   padding: 16px 20px;
   text-align: center;
-  color: #0E5353;
-  background-color: rgba(14, 83, 83, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--m-fg);
+  background-color: var(--background-overlay);
+  border-bottom: 1px solid var(--m-border-soft);
 }
 
 .incremental-loading-content {
@@ -137,7 +169,7 @@
 .feed-loading-container {
   padding: 20px;
   text-align: center;
-  color: #0E5353;
+  color: var(--m-fg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -147,7 +179,7 @@
 .feed-loading-main {
   padding: 40px;
   text-align: center;
-  color: #0E5353;
+  color: var(--m-fg);
 }
 
 .feed-loading-subtitle {
@@ -159,8 +191,8 @@
 .no-data-container {
   padding: 40px;
   text-align: center;
-  color: #0E5353;
-  opacity: 0.7;
+  color: var(--m-fg-muted);
+  opacity: 0.9;
 }
 
 /* Data Feed Cards */
@@ -172,11 +204,11 @@
 }
 
 .data-feed-card:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
 }
 
 .data-feed-card:hover .MuiTypography-root {
-  color: #0E5353;
+  color: var(--m-fg);
   transition: color 0.3s;
 }
 
@@ -188,29 +220,17 @@
 /* Performance Analytics Dashboard */
 .analytics-dashboard {
   padding: 24px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background-color: var(--m-surface);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   min-height: 800px;
   height: fit-content;
-  border: 1px solid rgba(14, 83, 83, 0.2);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(14, 83, 83, 0.1);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--m-border);
+  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
   width: 100%;
-}
-
-.analytics-dashboard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #0E5353 0%, #00b96f 50%, #0E5353 100%);
-  border-radius: 12px 12px 0 0;
 }
 
 .analytics-dashboard-header {
@@ -219,9 +239,9 @@
 }
 
 .analytics-dashboard-title {
-  color: #0E5353;
-  font-weight: bold;
-  font-size: 18px;
+  color: var(--m-fg) !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
 }
 
 .analytics-loading {
@@ -237,26 +257,32 @@
   display: flex;
   gap: 8px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .time-scale-button {
-  padding: 4px 12px;
+  padding: 6px 14px;
   background-color: transparent;
-  color: #0E5353;
-  border: 1px solid #0E5353;
-  border-radius: 4px;
+  color: var(--m-fg);
+  border: 1px solid var(--m-border);
+  border-radius: 9999px;
   cursor: pointer;
   text-transform: capitalize;
-  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  transition: all 0.12s var(--ease-standard);
 }
 
 .time-scale-button.active {
-  background-color: #0E5353;
-  color: white;
+  background-color: var(--active-btn-bg);
+  color: var(--active-btn-fg);
+  border-color: transparent;
+  font-weight: 600;
 }
 
 .time-scale-button:hover:not(.active) {
-  background-color: rgba(14, 83, 83, 0.1);
+  background-color: var(--hover-bg);
 }
 
 .custom-date-inputs {
@@ -280,9 +306,9 @@
   height: 340px;
   width: 100%;
   padding: 16px;
-  background-color: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(14, 83, 83, 0.1);
+  background-color: var(--m-surface-2);
+  border-radius: 12px;
+  border: 1px solid var(--m-border-soft);
   position: relative;
   margin-top: 16px;
 }
@@ -292,7 +318,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #0E5353;
+  color: var(--m-fg);
   flex-direction: column;
   gap: 16px;
 }
@@ -301,16 +327,32 @@
 .chart-footer {
   margin-top: 16px;
   padding: 12px 16px;
-  background-color: rgba(14, 83, 83, 0.05);
-  border-radius: 6px;
-  border: 1px solid rgba(14, 83, 83, 0.08);
+  background-color: var(--background-overlay);
+  border-radius: 12px;
+  border: 1px solid var(--m-border-soft);
   text-align: center;
 }
 
 .chart-footer-text {
-  color: #0E5353;
-  opacity: 0.6;
-  font-size: 11px;
+  color: var(--m-fg-muted) !important;
+  font-size: 11px !important;
+}
+
+/* Panel surfaces */
+.t-panel {
+  background-color: var(--panel-bg);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--m-border-soft);
+}
+
+.t-pagination-bar {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: var(--panel-bg);
+  border-radius: 16px;
+  border: 1px solid var(--m-border-soft);
 }
 
 /* Responsive Design */
@@ -319,16 +361,16 @@
     grid-template-columns: 1fr;
     gap: 20px;
   }
-  
+
   .price-feeds-grid {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .feed-section-saga {
     margin-left: 0;
   }
-  
+
   .analytics-dashboard {
     min-height: auto;
   }
@@ -338,16 +380,16 @@
   .feed-buttons-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .time-scale-toggle {
     flex-wrap: wrap;
   }
-  
+
   .custom-date-inputs {
     flex-direction: column;
     gap: 8px;
   }
-  
+
   .chart-container {
     height: 300px;
   }
@@ -355,11 +397,11 @@
 
 /* Loading States */
 .loading-spinner {
-  color: #0E5353;
+  color: var(--m-accent);
 }
 
 .loading-spinner-white {
-  color: white;
+  color: var(--active-btn-fg);
 }
 
 /* Pagination Styles */
@@ -369,15 +411,8 @@
   margin-top: 16px;
 }
 
-/* Color Variables for Chart Themes */
-:root {
-  --primary-color: #0E5353;
-  --secondary-color: #00b96f;
-  --delay-chart-primary: #00b96f;
-  --delay-chart-secondary: #4e597b;
-  --price-chart-primary: #ff8c42;
-  --price-chart-secondary: #ff6b35;
-  --background-overlay: rgba(14, 83, 83, 0.1);
-  --border-color: rgba(14, 83, 83, 0.2);
-  --text-color: #0E5353;
+/* Numeric table cells */
+.t-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }

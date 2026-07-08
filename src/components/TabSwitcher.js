@@ -1,7 +1,9 @@
 import React from "react";
-import { Tabs, Tab, Box } from "@mui/material";
+import { Tabs, Tab, Box, useTheme } from "@mui/material";
 
 export const TabSwitcher = ({ activeTab, setActiveTab }) => {
+  const theme = useTheme();
+
   return (
     <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
       <Tabs
@@ -9,19 +11,19 @@ export const TabSwitcher = ({ activeTab, setActiveTab }) => {
         onChange={(e, newValue) => setActiveTab(newValue)}
         sx={{
           "& .MuiTab-root": {
-            color: "#0E5353",
-            fontWeight: "normal",
+            color: "text.secondary",
+            fontWeight: 500,
             textTransform: "none",
-            fontSize: "16px",
+            fontSize: "13px",
             minWidth: 120,
           },
           "& .Mui-selected": {
-            color: "#0E5353",
-            fontWeight: "bold",
+            color: "text.primary",
+            fontWeight: 600,
           },
           "& .MuiTabs-indicator": {
-            backgroundColor: "#0E5353",
-            height: 3,
+            backgroundColor: theme.palette.secondary.main,
+            height: 2,
           },
         }}
       >

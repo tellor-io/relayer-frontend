@@ -8,6 +8,7 @@ import {
   TableHead,
   TableRow,
   Paper,
+  useTheme,
 } from "@mui/material";
 import {
   DEVIATION_THRESHOLD,
@@ -21,6 +22,13 @@ import {
   calculateTimeDifference,
 } from "../utils/formatters";
 
+const cellSx = {
+  color: "text.primary",
+  py: 2,
+  borderBottom: "1px solid",
+  borderColor: "divider",
+};
+
 export const TableContent = React.memo(({
   loading,
   reports,
@@ -29,120 +37,42 @@ export const TableContent = React.memo(({
   includeBlockTime,
   avgBlockTime,
 }) => {
+  const theme = useTheme();
+  const accent = theme.palette.text.primary;
+  const mutedBar = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.25)' : 'rgba(0,55,52,0.25)';
+
   return (
     <TableContainer
       component={Paper}
       sx={{
-        backgroundColor: "transparent",
+        backgroundColor: "background.paper",
         boxShadow: "none",
-        border: "1px solid rgba(14, 83, 83, 0.2)",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: "16px",
+        overflow: "hidden",
       }}
     >
       <Table sx={{ minWidth: 650 }}>
         <TableHead>
-          <TableRow sx={{ backgroundColor: "rgba(14, 83, 83, 0.05)" }}>
-            <TableCell
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Feed
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Value
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Deviation Threshold
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Power
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Reported
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Relayed
-            </TableCell>
-            <TableCell
-              align="right"
-              sx={{
-                color: "#0E5353",
-                fontWeight: "bold",
-                fontSize: "14px",
-                borderBottom: "2px solid rgba(14, 83, 83, 0.3)",
-              }}
-            >
-              Delay
-            </TableCell>
+          <TableRow>
+            <TableCell>Feed</TableCell>
+            <TableCell align="right">Value</TableCell>
+            <TableCell align="right">Deviation Threshold</TableCell>
+            <TableCell align="right">Power</TableCell>
+            <TableCell align="right">Reported</TableCell>
+            <TableCell align="right">Relayed</TableCell>
+            <TableCell align="right">Delay</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {loading ? (
-            // Show loading state when fetching feed data
             <TableRow>
-              <TableCell
-                colSpan={7}
-                align="center"
-                sx={{ py: 6, border: "none" }}
-              >
-                <CircularProgress
-                  size={40}
-                  style={{ color: "#0E5353", marginBottom: "16px" }}
-                />
-                <div style={{ color: "#0E5353" }}>Loading data...</div>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    opacity: 0.7,
-                    marginTop: "8px",
-                    color: "#0E5353",
-                  }}
-                >
-                  This may take a few moments while we fetch the latest
-                  transactions
+              <TableCell colSpan={7} align="center" sx={{ py: 6, border: "none" }}>
+                <CircularProgress size={40} sx={{ mb: 2 }} />
+                <div style={{ color: accent }}>Loading data...</div>
+                <div style={{ fontSize: "14px", opacity: 0.7, marginTop: "8px", color: accent }}>
+                  This may take a few moments while we fetch the latest transactions
                 </div>
               </TableCell>
             </TableRow>
@@ -151,34 +81,18 @@ export const TableContent = React.memo(({
               <TableRow
                 key={index}
                 onClick={() => {
-                  let explorerUrl = `${explorer}/${data.transactionHash}`;
+                  const explorerUrl = `${explorer}/${data.transactionHash}`;
                   window.open(explorerUrl, "_blank");
                 }}
                 sx={{
                   cursor: "pointer",
                   transition: "background-color 0.2s",
-                  "&:hover": {
-                    backgroundColor: "rgba(14, 83, 83, 0.08)",
-                  },
-                  "&:last-child td": {
-                    border: 0,
-                  },
+                  "&:hover": { backgroundColor: "action.hover" },
+                  "&:last-child td": { border: 0 },
                 }}
               >
-                <TableCell
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
+                <TableCell sx={cellSx}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <div
                       style={{
                         display: "flex",
@@ -196,90 +110,39 @@ export const TableContent = React.memo(({
                             width: "6px",
                             height: "2px",
                             backgroundColor:
-                              i <
-                              RISK_BAR_COUNT[
-                                FEED_RISK_ASSESSMENT[feed || "ETH/USD"] ||
-                                  "high"
-                              ]
-                                ? "#0E5353"
-                                : "rgba(14, 83, 83, 0.3)",
+                              i < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[feed || "ETH/USD"] || "high"]
+                                ? accent
+                                : mutedBar,
                             borderRadius: "1px",
                           }}
                         />
                       ))}
                     </div>
-                    {getFeedTypeSymbol(feed || "ETH/USD", "#0E5353")}
-                    <span style={{ fontWeight: "bold" }}>
-                      {feed || "ETH/USD"}
-                    </span>
+                    {getFeedTypeSymbol(feed || "ETH/USD", accent)}
+                    <span style={{ fontWeight: "bold" }}>{feed || "ETH/USD"}</span>
                   </div>
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={{ ...cellSx, fontFamily: theme.typography.fontFamilyMono }} className="t-num">
                   ${formatReportValue(data.reportValue)}
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={cellSx}>
                   {DEVIATION_THRESHOLD[feed] || "N/A"}
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={{ ...cellSx, fontFamily: theme.typography.fontFamilyMono }} className="t-num">
                   {Number(data.reportAggregatePower)}
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    fontSize: "13px",
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={{ ...cellSx, fontSize: "13px" }}>
                   {convertTimestampToLocaleString(data.reportTimestamp)}
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    fontSize: "13px",
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={{ ...cellSx, fontSize: "13px" }}>
                   {convertTimestampToLocaleString(data.relayTimestamp)}
                 </TableCell>
-                <TableCell
-                  align="right"
-                  sx={{
-                    color: "#0E5353",
-                    py: 2,
-                    borderBottom: "1px solid rgba(14, 83, 83, 0.1)",
-                  }}
-                >
+                <TableCell align="right" sx={{ ...cellSx, fontFamily: theme.typography.fontFamilyMono }} className="t-num">
                   {(() => {
                     let delay = calculateTimeDifference(
                       data.reportTimestamp,
                       data.relayTimestamp
                     );
-                    // Subtract block time if enabled
                     if (includeBlockTime && avgBlockTime > 0) {
                       delay = Math.max(0, delay - avgBlockTime);
                     }
@@ -290,21 +153,9 @@ export const TableContent = React.memo(({
               </TableRow>
             ))
           ) : (
-            // Show no data message when not loading and no data
             <TableRow>
-              <TableCell
-                colSpan={7}
-                align="center"
-                sx={{ py: 6, border: "none" }}
-              >
-                <div
-                  style={{
-                    color: "#0E5353",
-                    opacity: 0.7,
-                  }}
-                >
-                  <div>No data available for the selected feed</div>
-                </div>
+              <TableCell colSpan={7} align="center" sx={{ py: 6, border: "none", color: "text.secondary" }}>
+                No data available for the selected feed
               </TableCell>
             </TableRow>
           )}
