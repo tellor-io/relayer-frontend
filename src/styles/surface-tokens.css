@@ -1,0 +1,147 @@
+@import url('./colors_and_type.css');
+
+/* Surface tokens — light (default) */
+:root,
+[data-theme="light"] {
+  --m-bg: var(--pine-50);
+  --m-fg: var(--pine-950);
+  --m-fg-muted: var(--opal-700);
+  --m-fg-subtle: var(--opal-500);
+  --m-surface: #ffffff;
+  --m-surface-2: var(--pine-50);
+  --m-border: var(--opal-200);
+  --m-border-soft: var(--opal-100);
+  --m-accent: var(--pine-950);
+  --m-emerald: var(--emerald-500);
+  --m-glow: rgba(8, 212, 130, 0.18);
+  --m-active-bg: var(--pine-950);
+  --m-active-fg: var(--pine-50);
+}
+
+[data-theme="dark"] {
+  --m-bg: #001f1d;
+  --m-fg: var(--pine-50);
+  --m-fg-muted: #8fb6b2;
+  --m-fg-subtle: #6b928d;
+  --m-surface: #003734;
+  --m-surface-2: #002624;
+  --m-border: #0a4a47;
+  --m-border-soft: #073330;
+  --m-accent: var(--emerald-500);
+  --m-emerald: var(--emerald-500);
+  --m-glow: rgba(8, 212, 130, 0.18);
+  --m-active-bg: var(--emerald-500);
+  --m-active-fg: var(--pine-950);
+}
+
+body {
+  background: var(--m-bg);
+  color: var(--m-fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Topbar */
+.t-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 92px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--m-border-soft);
+  background: var(--m-bg);
+  position: relative;
+  z-index: 5;
+}
+
+.t-brand {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 78px;
+  width: calc(78px * 1078 / 298);
+  text-decoration: none;
+}
+
+.t-brand .t-logo {
+  height: 78px;
+  width: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.t-spacer {
+  flex: 1;
+}
+
+.t-iconbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: 1px solid var(--m-border);
+  background: var(--m-surface);
+  color: var(--m-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s var(--ease-standard);
+}
+
+.t-iconbtn:hover {
+  background: var(--m-surface-2);
+}
+
+.t-iconbtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Cards */
+.t-card {
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+
+/* Buttons */
+.t-btn {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  border: 0;
+  cursor: pointer;
+  padding: 10px 16px;
+  border-radius: 9999px;
+  transition: all 0.12s var(--ease-standard);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.t-btn--primary {
+  background: var(--m-accent);
+  color: var(--pine-50);
+}
+
+[data-theme="dark"] .t-btn--primary {
+  color: var(--pine-950);
+}
+
+.t-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--m-border);
+  color: var(--m-fg);
+}
+
+.t-btn--ghost:hover {
+  background: var(--m-surface);
+}
+
+.t-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

@@ -13,6 +13,7 @@ import {
   BASE_PRICE_PAIRS,
   SAGA_PRICE_PAIRS,
   HIDE_SAGA_FEEDS,
+  HIDE_DELAY_CHART,
 } from "../constants/dataFeedConstants";
 
 import {
@@ -24,6 +25,7 @@ import {
   Select,
   MenuItem,
   FormControl,
+  useTheme,
 } from "@mui/material";
 import { FeedSelector } from "./FeedSelector";
 import { Legends } from "./Legends";
@@ -42,7 +44,8 @@ import "../styles/DataFeed.css";
 import { prepareRollingAverageChart } from "../charts/RollingAverageChart";
 import { preparePriceChartData } from "../charts/PriceChart";
 import { getChartOptions, getPriceChartOptions } from "../charts/ChartOptions";
-import { DataFeedHeader } from "./DataFeedHeader";
+import { AppTopbar } from "./AppTopbar";
+import { useThemeMode } from "../context/ThemeModeContext";
 import { TabSwitcher } from "./TabSwitcher";
 import { OverviewTab } from "./OverviewTab";
 import { ChartControls } from "./ChartControls";
@@ -59,6 +62,12 @@ ChartJS.register(
 );
 
 const DataFeed = () => {
+  const { mode } = useThemeMode();
+  const theme = useTheme();
+  const activeBg = theme.palette.mode === 'dark'
+    ? theme.palette.secondary.main
+    : theme.palette.primary.main;
+  const activeFg = theme.palette.primary.contrastText;
   // --- STATE ---
   const [data, setData] = useState([]);
   const [overviewData, setOverviewData] = useState([]);
@@ -185,20 +194,27 @@ const DataFeed = () => {
 
 
   useEffect(() => {
-    if (activeTab === 0) {
-      setLoading(true);
-      async function fetchOverviewData() {
-        try {
-          const overviewData = await getOverviewData();
-          setOverviewData(overviewData);
-        } catch (error) {
-          console.error("Failed to fetch overview data:", error);
-        } finally {
+    if (activeTab !== 0) return;
+
+    async function fetchOverviewData(showLoader = false) {
+      if (showLoader) {
+        setLoading(true);
+      }
+      try {
+        const data = await getOverviewData();
+        setOverviewData(data);
+      } catch (error) {
+        console.error("Failed to fetch overview data:", error);
+      } finally {
+        if (showLoader) {
           setLoading(false);
         }
       }
-      fetchOverviewData();
     }
+
+    fetchOverviewData(true);
+    const interval = setInterval(() => fetchOverviewData(false), 30000);
+    return () => clearInterval(interval);
   }, [activeTab]);
 
   const handleSepoliaClick = (event) => {
@@ -238,9 +254,9 @@ const DataFeed = () => {
   };
 
   return (
-    <Container>
-      {/* Header with Logo and Status */}
-      <DataFeedHeader />
+    <>
+      <AppTopbar />
+      <Container>
       {/* Tabs for Overview and Feed History */}
       <TabSwitcher activeTab={activeTab} setActiveTab={setActiveTab} />
       {/* Tab Content */}
@@ -259,14 +275,7 @@ const DataFeed = () => {
           {/* Feed Selection and Legends */}
           <Grid container spacing={2}>
             <Grid item xs={12} md={7}>
-              <div
-                style={{
-                  backgroundColor: "#dee6e8ff",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  marginBottom: "20px",
-                }}
-              >
+              <div className="t-panel">
                 <div
                   style={{
                     display: "flex",
@@ -350,19 +359,11 @@ const DataFeed = () => {
                     justifyContent="space-between"
                     alignItems="center"
                     spacing={2}
-                    sx={{
-                      mt: 3,
-                      p: 2,
-                      backgroundColor: "#dee6e8ff",
-                      borderRadius: "12px",
-                    }}
+                    className="t-pagination-bar"
                   >
                     {/* 1. Left Side: Rows Per Page Selector */}
                     <Stack direction="row" alignItems="center" spacing={2}>
-                      <Typography
-                        variant="body2"
-                        sx={{ color: "#0E5353", fontWeight: 500 }}
-                      >
+                      <Typography variant="body2" sx={{ color: "text.primary", fontWeight: 500 }}>
                         Rows per page:
                       </Typography>
                       <FormControl size="small">
@@ -373,17 +374,11 @@ const DataFeed = () => {
                             setCurrentPage(1);
                           }}
                           sx={{
-                            color: "#0E5353",
-                            "& .MuiOutlinedInput-notchedOutline": {
-                              borderColor: "#0E5353",
-                            },
-                            "&:hover .MuiOutlinedInput-notchedOutline": {
-                              borderColor: "#0E5353",
-                            },
-                            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                              borderColor: "#0E5353",
-                            },
-                            "& .MuiSvgIcon-root": { color: "#0E5353" },
+                            color: "text.primary",
+                            "& .MuiOutlinedInput-notchedOutline": { borderColor: "divider" },
+                            "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "primary.main" },
+                            "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "primary.main" },
+                            "& .MuiSvgIcon-root": { color: "text.primary" },
                             height: 32,
                           }}
                         >
@@ -409,12 +404,13 @@ const DataFeed = () => {
                           }}
                           {...item}
                           sx={{
-                            color: "#0E5353",
+                            color: "text.primary",
                             "&.Mui-selected": {
-                              backgroundColor: "#0E5353",
-                              color: "white",
+                              backgroundColor: activeBg,
+                              color: activeFg,
                               "&:hover": {
-                                backgroundColor: "#083D3D",
+                                backgroundColor: activeBg,
+                                opacity: 0.9,
                               },
                             },
                           }}
@@ -459,47 +455,51 @@ const DataFeed = () => {
                     setCustomStartDate={setCustomStartDate}
                     customEndDate={customEndDate}
                     setCustomEndDate={setCustomEndDate}
+                    hideBlockTimeToggle={HIDE_DELAY_CHART}
                   />
                 )}
-                {/* Delay Performance Chart */}
-                <div className="chart-container">
-                  {chartLoading ? (
-                    <div className="chart-loading">
-                      <CircularProgress size={40} className="loading-spinner" />
-                      <div>Loading chart data...</div>
-                    </div>
-                  ) : (
-                    (() => {
-                      const delayChartData = prepareRollingAverageChart(
-                        chartData,
-                        timeScale,
-                        includeBlockTime,
-                        customStartDate,
-                        customEndDate,
-                        avgBlockTime
-                      );
-                      const delayValues =
-                        delayChartData.datasets?.[1]?.data ?? [];
-                      const maxDelay =
-                        delayValues.length > 0
-                          ? Math.max(...delayValues)
-                          : null;
-                      return (
-                        <Line
-                          options={{
-                            ...getChartOptions(
-                              timeScale,
-                              includeBlockTime,
-                              maxDelay
-                            ),
-                            maintainAspectRatio: false,
-                          }}
-                          data={delayChartData}
-                        />
-                      );
-                    })()
-                  )}
-                </div>
+                {!HIDE_DELAY_CHART && (
+                  <div className="chart-container">
+                    {chartLoading ? (
+                      <div className="chart-loading">
+                        <CircularProgress size={40} className="loading-spinner" />
+                        <div>Loading chart data...</div>
+                      </div>
+                    ) : (
+                      (() => {
+                        const delayChartData = prepareRollingAverageChart(
+                          chartData,
+                          timeScale,
+                          includeBlockTime,
+                          customStartDate,
+                          customEndDate,
+                          avgBlockTime,
+                          mode
+                        );
+                        const delayValues =
+                          delayChartData.datasets?.[1]?.data ?? [];
+                        const maxDelay =
+                          delayValues.length > 0
+                            ? Math.max(...delayValues)
+                            : null;
+                        return (
+                          <Line
+                            options={{
+                              ...getChartOptions(
+                                timeScale,
+                                includeBlockTime,
+                                maxDelay,
+                                mode
+                              ),
+                              maintainAspectRatio: false,
+                            }}
+                            data={delayChartData}
+                          />
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
 
                 {/* Price Performance Chart */}
                 <div className="chart-container">
@@ -511,14 +511,16 @@ const DataFeed = () => {
                   ) : (
                     <Line
                       options={{
-                        ...getPriceChartOptions(timeScale),
+                        ...getPriceChartOptions(timeScale, mode),
                         maintainAspectRatio: false,
                       }}
                       data={preparePriceChartData(
                         chartData,
                         timeScale,
                         customStartDate,
-                        customEndDate
+                        customEndDate,
+                        mode,
+                        !HIDE_DELAY_CHART
                       )}
                     />
                   )}
@@ -536,6 +538,7 @@ const DataFeed = () => {
         </>
       )}
     </Container>
+    </>
   );
 };
 

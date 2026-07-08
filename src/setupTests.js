@@ -19,12 +19,12 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
-// Mock ResizeObserver for Chart.js
-global.ResizeObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  unobserve: jest.fn(),
-  disconnect: jest.fn(),
-}));
+// Mock ResizeObserver for Chart.js and MUI Tabs
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 // Mock IntersectionObserver for Material-UI components
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({

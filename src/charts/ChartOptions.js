@@ -1,6 +1,8 @@
 import { formatPrice } from "../utils/formatters";
+import { getChartColors } from "../theme/tellorTheme";
 
-export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
+export const getChartOptions = (timeScale, includeBlockTime, maxDelay, mode = 'light') => {
+  const colors = getChartColors(mode);
   const yMax =
     maxDelay != null && maxDelay > 0
       ? Math.max(60, Math.ceil(maxDelay / 20) * 20)
@@ -16,7 +18,7 @@ export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
       legend: {
         position: "top",
         labels: {
-          color: "#0E5353",
+          color: colors.legend,
           usePointStyle: true,
           padding: 20,
         },
@@ -32,7 +34,7 @@ export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
               timeScale.charAt(0).toUpperCase() +
               timeScale.slice(1)
         } View${includeBlockTime ? " (Block Time Adjusted)" : ""}`,
-        color: "#0E5353",
+        color: colors.legend,
         padding: 20,
       },
     },
@@ -42,7 +44,7 @@ export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
         min: 0,
         max: yMax,
         ticks: {
-          color: "#0E5353",
+          color: colors.tick,
           stepSize: 20,
           autoSkip: false,
           callback: function (value) {
@@ -50,82 +52,86 @@ export const getChartOptions = (timeScale, includeBlockTime, maxDelay) => {
           },
         },
         grid: {
-          color: "rgba(14, 83, 83, 0.1)",
+          color: colors.grid,
         },
       },
       x: {
         ticks: {
-          color: "#0E5353",
+          color: colors.tick,
           maxRotation: 45,
           minRotation: 45,
         },
         grid: {
-          color: "rgba(14, 83, 83, 0.1)",
+          color: colors.grid,
         },
       },
     },
   };
 };
 
-export const getPriceChartOptions = (timeScale) => ({
-  responsive: true,
-  interaction: {
-    mode: "index",
-    intersect: false,
-  },
-  plugins: {
-    legend: {
-      position: "top",
-      labels: {
-        color: "#0E5353",
-        usePointStyle: true,
+export const getPriceChartOptions = (timeScale, mode = 'light') => {
+  const colors = getChartColors(mode);
+
+  return {
+    responsive: true,
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        position: "top",
+        labels: {
+          color: colors.legend,
+          usePointStyle: true,
+          padding: 20,
+        },
+      },
+      title: {
+        display: true,
+        text: `Price - ${
+          timeScale === "recent"
+            ? "Recent"
+            : timeScale === "custom"
+            ? "Custom Date Range"
+            : "Detailed " + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
+        } View`,
+        color: colors.legend,
         padding: 20,
       },
-    },
-    title: {
-      display: true,
-      text: `Price - ${
-        timeScale === "recent"
-          ? "Recent"
-          : timeScale === "custom"
-          ? "Custom Date Range"
-          : "Detailed " + timeScale.charAt(0).toUpperCase() + timeScale.slice(1)
-      } View`,
-      color: "#0E5353",
-      padding: 20,
-    },
-    tooltip: {
-      callbacks: {
-        label: function (context) {
-          const label = context.dataset.label || "";
-          const value = context.parsed.y;
-          return `${label}: ${formatPrice(value)}`;
+      tooltip: {
+        callbacks: {
+          label: function (context) {
+            const label = context.dataset.label || "";
+            const value = context.parsed.y;
+            return `${label}: ${formatPrice(value)}`;
+          },
         },
       },
     },
-  },
-  scales: {
-    y: {
-      beginAtZero: false,
-      ticks: {
-        color: "#0E5353",
-        callback: function (value) {
-          return formatPrice(value);
+    scales: {
+      y: {
+        beginAtZero: false,
+        ticks: {
+          color: colors.tick,
+          callback: function (value) {
+            return formatPrice(value);
+          },
+        },
+        grid: {
+          color: colors.grid,
         },
       },
-      grid: {
-        color: "rgba(14, 83, 83, 0.1)",
+      x: {
+        ticks: {
+          color: colors.tick,
+          maxRotation: 45,
+          minRotation: 45,
+        },
+        grid: {
+          color: colors.grid,
+        },
       },
     },
-    x: {
-      ticks: {
-        color: "#0E5353",
-        maxRotation: 45,
-        minRotation: 45,
-      },
-      grid: {
-        color: "rgba(14, 83, 83, 0.1)",
-      },
-    },
-  },
-});
+  };
+};

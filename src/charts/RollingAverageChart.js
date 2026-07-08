@@ -2,6 +2,7 @@ import {
   calculateTimeDifferenceFormatted,
   pickPointsAtTargetTimes,
 } from "../utils/formatters";
+import { getChartColors } from "../theme/tellorTheme";
 
 export const prepareRollingAverageChart = (
   dataset,
@@ -9,7 +10,8 @@ export const prepareRollingAverageChart = (
   includeBlockTime,
   customStartDate,
   customEndDate,
-  avgBlockTime = 0
+  avgBlockTime = 0,
+  mode = 'light'
 ) => {
   if (!Array.isArray(dataset) || dataset.length === 0)
     return { labels: [], datasets: [] };
@@ -276,14 +278,16 @@ export const prepareRollingAverageChart = (
     }
   }
 
+  const colors = getChartColors(mode);
+
   return {
     labels: processedData.labels,
     datasets: [
       {
         label: "Rolling Average",
         data: processedData.averageDelay,
-        borderColor: "#4e597b",
-        backgroundColor: "rgba(78, 89, 123, 0.1)",
+        borderColor: colors.delaySecondary,
+        backgroundColor: `${colors.delaySecondary}1A`,
         borderWidth: 2,
         borderDash: [5, 5],
         pointRadius: 0,
@@ -295,13 +299,13 @@ export const prepareRollingAverageChart = (
           includeBlockTime ? " (Block Time Adj.)" : ""
         } (sec)`,
         data: processedData.delays,
-        borderColor: "#00b96f",
-        backgroundColor: "rgba(0, 185, 111, 0.2)",
+        borderColor: colors.delayPrimary,
+        backgroundColor: `${colors.delayPrimary}33`,
         borderWidth: timeScale === "recent" ? 2 : 1,
         pointRadius: timeScale === "recent" ? 4 : 2,
         pointHoverRadius: timeScale === "recent" ? 6 : 4,
-        pointBackgroundColor: "#00b96f",
-        pointBorderColor: "#00b96f",
+        pointBackgroundColor: colors.delayPrimary,
+        pointBorderColor: colors.delayPrimary,
         tension: 0.1,
       },
     ],

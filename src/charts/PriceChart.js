@@ -1,10 +1,13 @@
 import { convertHexToDecimal, pickPointsAtTargetTimes } from "../utils/formatters";
+import { getChartColors } from "../theme/tellorTheme";
 
 export const preparePriceChartData = (
   dataset,
   timeScale,
   customStartDate,
-  customEndDate
+  customEndDate,
+  mode = 'light',
+  includeRollingAverage = true
 ) => {
   if (!Array.isArray(dataset) || dataset.length === 0)
     return { labels: [], datasets: [] };
@@ -276,32 +279,38 @@ export const preparePriceChartData = (
     }
   }
 
+  const colors = getChartColors(mode);
+
   return {
     labels: processedData.labels,
     datasets: [
-      {
-        label: "Rolling Average",
-        data: processedData.averagePrice,
-        borderColor: "rgb(17, 122, 118)",
-        backgroundColor: "rgba(183, 184, 184, 0.34)",
-        borderWidth: 2,
-        borderDash: [5, 5],
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        tension: 0,
-      },
+      ...(includeRollingAverage
+        ? [
+            {
+              label: "Rolling Average",
+              data: processedData.averagePrice,
+              borderColor: colors.priceSecondary,
+              backgroundColor: `${colors.priceSecondary}22`,
+              borderWidth: 2,
+              borderDash: [5, 5],
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              tension: 0,
+            },
+          ]
+        : []),
       {
         label: `${
           timeScale === "recent" ? "Current" : "Individual"
         } Price (USD)`,
         data: processedData.prices,
-        borderColor: "#00d6b9",
-        backgroundColor: "rgb(66, 255, 255)",
+        borderColor: colors.pricePrimary,
+        backgroundColor: `${colors.pricePrimary}33`,
         borderWidth: timeScale === "recent" ? 2 : 1,
         pointRadius: timeScale === "recent" ? 4 : 2,
         pointHoverRadius: timeScale === "recent" ? 6 : 4,
-        pointBackgroundColor: "#00d6b9",
-        pointBorderColor: "#00d6b9",
+        pointBackgroundColor: colors.pricePrimary,
+        pointBorderColor: colors.pricePrimary,
         tension: 0.1,
       },
     ],

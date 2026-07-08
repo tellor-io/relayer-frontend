@@ -6,6 +6,7 @@ import {
   FormControl,
   InputLabel,
   Box,
+  useTheme,
 } from "@mui/material";
 import {
   getFeedTypeSymbol,
@@ -20,8 +21,16 @@ export const FeedSelector = ({
   pairs,
   loading = false,
 }) => {
+  const theme = useTheme();
   const pairEntries = Object.entries(pairs);
   const isShortList = pairEntries.length <= 3;
+  const activeBg = theme.palette.mode === 'dark'
+    ? theme.palette.secondary.main
+    : theme.palette.primary.main;
+  const activeFg = theme.palette.mode === 'dark'
+    ? theme.palette.primary.contrastText
+    : theme.palette.primary.contrastText;
+  const idleColor = theme.palette.text.primary;
 
   const renderFeedContent = (pairName, textColor) => (
     <div
@@ -32,7 +41,6 @@ export const FeedSelector = ({
         color: textColor,
       }}
     >
-      {/* Risk Bars */}
       <div
         style={{
           display: "flex",
@@ -59,7 +67,7 @@ export const FeedSelector = ({
               backgroundColor:
                 index < RISK_BAR_COUNT[FEED_RISK_ASSESSMENT[pairName] || "high"]
                   ? textColor
-                  : "rgba(255,255,255,0.3)",
+                  : `${textColor}4D`,
               borderRadius: "1px",
             }}
           />
@@ -75,55 +83,45 @@ export const FeedSelector = ({
       <div>
         <Typography
           variant="body2"
-          sx={{ color: "#0E5353", fontWeight: "bold", mb: 2, fontSize: "14px" }}
+          sx={{ color: "text.primary", fontWeight: 600, mb: 2, fontSize: "14px" }}
         >
           {label}:
           {loading && (
-            <span
-              style={{
-                marginLeft: "8px",
-                fontSize: "12px",
-                opacity: 0.7,
-                fontWeight: "normal",
-              }}
-            >
+            <span style={{ marginLeft: "8px", fontSize: "12px", opacity: 0.7, fontWeight: "normal" }}>
               (Loading...)
             </span>
           )}
         </Typography>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {pairEntries.map(([pairName, queryId]) => {
+          {pairEntries.map(([pairName]) => {
             const isSelected = value === pairName;
 
             return (
               <Box
                 key={pairName}
-                onClick={() =>
-                  !loading && onChange({ target: { value: pairName } })
-                }
+                onClick={() => !loading && onChange({ target: { value: pairName } })}
                 sx={{
                   height: "36px",
                   minWidth: "120px",
-                  border: "2px solid #0E5353",
-                  borderRadius: "4px",
+                  border: "1px solid",
+                  borderColor: isSelected ? "transparent" : "divider",
+                  borderRadius: "9999px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   padding: "0 12px",
                   cursor: loading ? "default" : "pointer",
-                  backgroundColor: isSelected ? "#0E5353" : "transparent",
+                  backgroundColor: isSelected ? activeBg : "transparent",
                   opacity: loading ? 0.6 : 1,
-                  transition: "all 0.2s",
+                  transition: "all 0.12s",
                   "&:hover": {
-                    backgroundColor: isSelected
-                      ? "#0E5353"
-                      : "rgba(14, 83, 83, 0.04)",
+                    backgroundColor: isSelected ? activeBg : "action.hover",
                   },
                   fontSize: "12px",
                 }}
               >
-                {renderFeedContent(pairName, isSelected ? "white" : "#0E5353")}
+                {renderFeedContent(pairName, isSelected ? activeFg : idleColor)}
               </Box>
             );
           })}
@@ -136,18 +134,11 @@ export const FeedSelector = ({
     <div>
       <Typography
         variant="body2"
-        sx={{ color: "#0E5353", fontWeight: "bold", mb: 2, fontSize: "14px" }}
+        sx={{ color: "text.primary", fontWeight: 600, mb: 2, fontSize: "14px" }}
       >
         {label}:
         {loading && (
-          <span
-            style={{
-              marginLeft: "8px",
-              fontSize: "12px",
-              opacity: 0.7,
-              fontWeight: "normal",
-            }}
-          >
+          <span style={{ marginLeft: "8px", fontSize: "12px", opacity: 0.7, fontWeight: "normal" }}>
             (Loading...)
           </span>
         )}
@@ -159,28 +150,23 @@ export const FeedSelector = ({
           minWidth: 125,
           height: "36px",
           "& .MuiOutlinedInput-root": {
-            color: "#0E5353",
+            color: value ? activeFg : idleColor,
+            backgroundColor: value ? activeBg : "transparent",
             height: "36px",
-            "& fieldset": { borderColor: "#0E5353", borderWidth: "2px" },
-            "&:hover fieldset": { borderColor: "#0E5353", borderWidth: "2px" },
-            "&.Mui-focused fieldset": {
-              borderColor: "#0E5353",
-              borderWidth: "2px",
-            },
+            borderRadius: "9999px",
+            "& fieldset": { borderColor: "divider" },
+            "&:hover fieldset": { borderColor: "primary.main" },
+            "&.Mui-focused fieldset": { borderColor: "primary.main" },
           },
-          "& .MuiSelect-icon": { color: value ? "white" : "#0E5353" },
+          "& .MuiSelect-icon": { color: value ? activeFg : idleColor },
         }}
       >
-        <InputLabel
-          sx={{ color: value ? "white" : "#0E5353", display: "none" }}
-        >
-          Select Feed
-        </InputLabel>
+        <InputLabel sx={{ display: "none" }}>Select Feed</InputLabel>
         <Select
           sx={{
             "& .MuiSelect-select": {
-              backgroundColor: value ? "#0E5353" : "transparent",
-              color: value ? "white" : "#0E5353",
+              color: value ? activeFg : idleColor,
+              borderRadius: "9999px",
             },
           }}
           value={value || ""}
@@ -188,19 +174,43 @@ export const FeedSelector = ({
           disabled={loading}
           displayEmpty
           onChange={onChange}
+          MenuProps={{
+            PaperProps: {
+              sx: {
+                bgcolor: "background.paper",
+                "& .MuiMenuItem-root": {
+                  color: "text.primary",
+                  "&.Mui-selected": {
+                    backgroundColor: activeBg,
+                    color: activeFg,
+                    "&:hover": { backgroundColor: activeBg },
+                  },
+                },
+              },
+            },
+          }}
           renderValue={(selected) => {
-            if (!selected) return <em>Select Feed</em>;
-            return renderFeedContent(selected, "white");
+            if (!selected) {
+              return (
+                <em style={{ color: theme.palette.text.secondary, fontStyle: "italic" }}>
+                  Select Feed
+                </em>
+              );
+            }
+            return renderFeedContent(selected, activeFg);
           }}
         >
-          <MenuItem value="">
+          <MenuItem value="" sx={{ color: "text.secondary" }}>
             <em>None</em>
           </MenuItem>
-          {pairEntries.map(([pairName, queryId]) => (
-            <MenuItem key={pairName} value={pairName}>
-              {renderFeedContent(pairName, "white")}
-            </MenuItem>
-          ))}
+          {pairEntries.map(([pairName]) => {
+            const isSelected = value === pairName;
+            return (
+              <MenuItem key={pairName} value={pairName}>
+                {renderFeedContent(pairName, isSelected ? activeFg : idleColor)}
+              </MenuItem>
+            );
+          })}
         </Select>
       </FormControl>
     </div>
