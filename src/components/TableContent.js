@@ -19,7 +19,6 @@ import {
 import {
   formatReportValue,
   convertTimestampToLocaleString,
-  calculateTimeDifference,
 } from "../utils/formatters";
 
 const cellSx = {
@@ -34,8 +33,6 @@ export const TableContent = React.memo(({
   reports,
   feed,
   explorer,
-  includeBlockTime,
-  avgBlockTime,
 }) => {
   const theme = useTheme();
   const accent = theme.palette.text.primary;
@@ -62,13 +59,12 @@ export const TableContent = React.memo(({
             <TableCell align="right">Power</TableCell>
             <TableCell align="right">Reported</TableCell>
             <TableCell align="right">Relayed</TableCell>
-            <TableCell align="right">Delay</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={7} align="center" sx={{ py: 6, border: "none" }}>
+              <TableCell colSpan={6} align="center" sx={{ py: 6, border: "none" }}>
                 <CircularProgress size={40} sx={{ mb: 2 }} />
                 <div style={{ color: accent }}>Loading data...</div>
                 <div style={{ fontSize: "14px", opacity: 0.7, marginTop: "8px", color: accent }}>
@@ -137,24 +133,11 @@ export const TableContent = React.memo(({
                 <TableCell align="right" sx={{ ...cellSx, fontSize: "13px" }}>
                   {convertTimestampToLocaleString(data.relayTimestamp)}
                 </TableCell>
-                <TableCell align="right" sx={{ ...cellSx, fontFamily: theme.typography.fontFamilyMono }} className="t-num">
-                  {(() => {
-                    let delay = calculateTimeDifference(
-                      data.reportTimestamp,
-                      data.relayTimestamp
-                    );
-                    if (includeBlockTime && avgBlockTime > 0) {
-                      delay = Math.max(0, delay - avgBlockTime);
-                    }
-                    return delay.toFixed(1);
-                  })()}
-                  s
-                </TableCell>
               </TableRow>
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={7} align="center" sx={{ py: 6, border: "none", color: "text.secondary" }}>
+              <TableCell colSpan={6} align="center" sx={{ py: 6, border: "none", color: "text.secondary" }}>
                 No data available for the selected feed
               </TableCell>
             </TableRow>
