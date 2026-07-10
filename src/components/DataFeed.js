@@ -350,8 +350,6 @@ const DataFeed = () => {
                     feed={feedName}
                     loading={loading}
                     explorer={explorer}
-                    includeBlockTime={includeBlockTime}
-                    avgBlockTime={avgBlockTime}
                   />
                   {/* --- NEW PAGINATION BAR --- */}
                   <Stack
